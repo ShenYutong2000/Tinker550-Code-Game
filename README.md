@@ -22,9 +22,11 @@ npm run preview
 
 ## 当前结构
 
-- `index.html`：页面外壳、静态结构与仍待拆分的 JavaScript。
+- `index.html`：页面外壳、静态结构与仍待拆分的应用 JavaScript。
 - `src/styles/base.css`：原型最初位于 `<head>` 的基础样式。
 - `src/styles/app.css`：页面主样式，保留原有规则顺序与响应式断点。
+- `src/game/engine.js`：原型 Canvas 游戏引擎；页面试玩与导出文件共用这一份源码。
+- `src/game/export.js`：生成独立 HTML，并处理下载或复制代码的导出流程。
 - `baseline/`：第一步保存的原始文件、截图和操作基准。
 
-第三步只拆分了页面样式。导出小游戏所用的内嵌 `<style>` 仍在导出模板里，以保持导出的 HTML 为单文件；游戏引擎和页面脚本留待后续步骤拆分。
+第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。应用其余逻辑仍在 `index.html`，后续步骤再拆分。
