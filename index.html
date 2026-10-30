@@ -53,6 +53,9 @@
 <script type="module">
 import "./src/game/engine.js";
 import { exportStandaloneGame } from "./src/game/export.js";
+import { COLS, COLMAP, CHAR_COL, MODES } from "./src/design/catalog.js";
+import { sing, cap, bestMatch, parseHero, parseAction } from "./src/design/parse.js";
+import { optionsFor, questionFor, STEMS, COL_WORDS } from "./src/design/options.js";
 (function(){
 "use strict";
 const $=(s,r=document)=>r.querySelector(s);
@@ -65,136 +68,6 @@ const store={get(k){try{return JSON.parse(localStorage.getItem(k)||"null");}catc
 try{if(/[?&]reset\b/.test(location.search)||location.hash==="#reset"){["tinkercade.projects.v6","tinkercade.bot.v6"].forEach(k=>localStorage.removeItem(k));history.replaceState(null,"",location.pathname);}}catch(e){}
 const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* ---------- design vocabulary ---------- */
-const COLS=[
-  {key:"players",en:"PLAYERS",zh:"Players",ic:"👥",tip:"Is this game for one person, or friends too? Do you team up, or compete?",eg:"e.g. two players team up: one uses arrow keys, one uses WASD."},
-  {key:"objectives",en:"OBJECTIVES",zh:"Goal",ic:"🎯",tip:"What is the player trying to do? What counts as winning? Without a goal, players don't know what to do.",eg:"e.g. collect 10 stars."},
-  {key:"procedures",en:"PROCEDURES",zh:"Controls",ic:"🕹️",tip:"What do the player's fingers do: which keys, how the mouse moves. It's how you talk to the game.",eg:"e.g. use ← → to move."},
-  {key:"rules",en:"RULES",zh:"Rules",ic:"⚙️",tip:"The laws of your game world, said as \"if… then…\". The computer only follows rules. It never guesses.",eg:"e.g. if you touch a star, you get 1 point."},
-  {key:"resources",en:"RESOURCES",zh:"Resources",ic:"💎",tip:"Precious things that can run out. When they get low, players get nervous.",eg:"e.g. 3 lives, a 30-second timer, coins."},
-  {key:"conflict",en:"CONFLICT",zh:"Challenge",ic:"⚡",tip:"What stops you from winning easily? Games that are too easy get boring fast.",eg:"e.g. bombs fall from the sky, and it gets faster."},
-  {key:"boundaries",en:"BOUNDARIES",zh:"Edges",ic:"🧱",tip:"Where are the walls of your world? At the edge, do you stop, wrap around, or bounce back?",eg:"e.g. leave on the left, come back on the right."},
-  {key:"outcome",en:"OUTCOME",zh:"Ending",ic:"🏁",tip:"What happens when the game ends? A party, a score, or play again right away?",eg:"e.g. reach 10 points to win, with confetti."}
-];
-const COLMAP=Object.fromEntries(COLS.map(c=>[c.key,c]));
-const CHAR_COL={key:"character",en:"MY CHARACTER",zh:"My character",ic:"🧩",tip:"This is your game's hero! It becomes a real, moving character on the canvas. You can add more characters later.",eg:"e.g. a cat, a robot."};
-
-const HEROES=[
-  {k:["猫","cat","kitty","kitten"],e:"🐱",n:"cat"},{k:["狗","dog","puppy"],e:"🐶",n:"dog"},{k:["机器人","robot"],e:"🤖",n:"robot"},
-  {k:["火箭","rocket","ship"],e:"🚀",n:"rocket"},{k:["鱼","fish"],e:"🐟",n:"fish"},{k:["兔","rabbit","bunny"],e:"🐰",n:"bunny"},
-  {k:["恐龙","dino"],e:"🦖",n:"dinosaur"},{k:["企鹅","penguin"],e:"🐧",n:"penguin"},{k:["熊猫","panda"],e:"🐼",n:"panda"},
-  {k:["青蛙","frog"],e:"🐸",n:"frog"},{k:["外星","alien"],e:"👽",n:"alien"},{k:["鸡","鸟","chick","bird"],e:"🐥",n:"chick"},
-  {k:["章鱼","octopus"],e:"🐙",n:"octopus"},{k:["狐狸","fox"],e:"🦊",n:"fox"}
-];
-const ITEMS=[
-  {k:["星","star"],e:"⭐",n:"stars"},{k:["苹果","apple"],e:"🍎",n:"apples"},{k:["金币","coin","money"],e:"🪙",n:"coins"},
-  {k:["鱼","fish"],e:"🐟",n:"fish"},{k:["糖","candy","sweet"],e:"🍬",n:"candy"},{k:["蛋糕","cake"],e:"🍰",n:"cakes"},
-  {k:["宝石","gem","diamond","jewel"],e:"💎",n:"gems"},{k:["泡泡","bubble"],e:"🫧",n:"bubbles"},{k:["气球","balloon"],e:"🎈",n:"balloons"},
-  {k:["陨石","meteor","rock","asteroid"],e:"☄️",n:"meteors"},{k:["仙人掌","cactus","cacti"],e:"🌵",n:"cacti"},{k:["箱","box"],e:"📦",n:"boxes"},
-  {k:["胡萝卜","carrot"],e:"🥕",n:"carrots"},{k:["骨头","bone"],e:"🦴",n:"bones"},{k:["雪花","snow"],e:"❄️",n:"snowflakes"}
-];
-const MODES={
-  dodge:{k:["躲","dodg","avoid","escape"],def:{e:"☄️",n:"meteors"},obj:n=>"dodge the falling "+n},
-  jump:{k:["跳","jump","hop","leap"],def:{e:"🌵",n:"cacti"},obj:n=>"jump over the "+n},
-  shoot:{k:["射","打","shoot","fire","blast","pop"],def:{e:"🎈",n:"balloons"},obj:n=>"shoot bubbles to pop the "+n},
-  catch:{k:["接","抓","收集","吃","catch","collect","eat","grab"],def:{e:"⭐",n:"stars"},obj:n=>"catch the falling "+n},
-  roam:{k:["游","飞","走","swim","fly","explore","walk","run","move","find"],def:{e:"💎",n:"gems"},obj:n=>"explore and find "+n}
-};
-const hasKey=(t,k)=>/^[a-z]/.test(k)?new RegExp("\\b"+k).test(t):t.includes(k);   // English keys match from a word start ("cat" is not in "scatter")
-const findIn=(list,t)=>{t=t.toLowerCase();return list.find(x=>x.k.some(k=>hasKey(t,k)));};
-const sing=n=>({cacti:"cactus",fish:"fish",candy:"candy"})[n]||n.replace(/(ch|sh|x)es$/,"$1").replace(/([^s])s$/,"$1");
-const cap=s=>s.replace(/\b[a-z]/g,m=>m.toUpperCase());
-/* loose English matching: compare word stems, ignoring words every option shares */
-const STOP=new Set("the a an and to of it its is in on at you your my i be get gets got so".split(" "));
-const words=s=>s.toLowerCase().replace(/[^a-z0-9+ ]/g," ").split(/\s+/).filter(w=>w&&!STOP.has(w)).map(w=>w.replace(/(ing|ed|es|s)$/,"").slice(0,5)||w);
-function bestMatch(t,opts){
-  const c=ctx(),skip=new Set(words(c.hero.n+" "+c.item.n+" "+sing(c.item.n)));   // the hero and item are in every sentence, so they prove nothing
-  const sets=opts.map(o=>new Set(words(o.t))),tw=new Set(words(t).filter(w=>!skip.has(w)));let best=-1,score=0;
-  sets.forEach((set,i)=>{const n=[...tw].filter(w=>set.has(w)&&!sets.every(x=>x.has(w))).length;if(n>score){score=n;best=i;}});
-  return {best,score};
-}
-function parseHero(t){const h=findIn(HEROES,t);const n=t.trim().replace(/^(a|an|the|my)\s+/i,"");return h?{e:h.e,n:n||h.n}:{e:"👾",n:n||"little monster"};}
-function parseAction(t){
-  const low=t.toLowerCase();
-  let mode="catch";
-  for(const m of ["dodge","jump","shoot","catch","roam"]) if(MODES[m].k.some(k=>hasKey(low,k))){mode=m;break;}
-  const it=findIn(ITEMS,t);
-  const item=it?{e:it.e,n:it.n}:MODES[mode].def;
-  return {mode,item};
-}
-
-/* option catalogs per column, given context */
-function optionsFor(col,c){
-  const it=c.item.n, hero=c.hero.n, m=c.mode, it1=sing(it), collect=["catch","roam","shoot"].includes(m);
-  const speed={t:"the "+hero+" moves faster",e:{speed:1.45},pic:"💨"};
-  switch(col){
-    case "rules":
-      if(m==="dodge") return [{t:"dodge a "+it1+": +1 point",e:{dodgeScore:true},pic:"+1"},{t:"get hit by a "+it1+": dizzy for 1 second",e:{onHit:"stun"},pic:"💫"},{t:"get hit: the "+hero+" shrinks a bit",e:{onHit:"shrink"},pic:"🔽"}];
-      if(m==="jump") return [{t:"jump over a "+it1+": +1 point",e:{jumpScore:true},pic:"+1"},{t:"bump a "+it1+": dizzy for 1 second",e:{onHit:"stun"},pic:"💫"},{t:"bump a "+it1+": start over",e:{onHit:"reset"},pic:"🔁"}];
-      if(m==="shoot") return [{t:"hit a "+it1+": it disappears, +1 point",e:{onCatch:"score"},pic:"+1"},{t:"hit a "+it1+": it splits in two",e:{onCatch:"split"},pic:"✂️"},{t:"hit a "+it1+": the "+hero+" grows and glows",e:{onCatch:"grow"},pic:"🌟"}];
-      return [{t:"touch a "+it1+": it disappears, +1 point",e:{onCatch:"score"},pic:"+1"},{t:"touch a "+it1+": the "+hero+" grows and glows",e:{onCatch:"grow"},pic:"🌟"},{t:"touch a "+it1+": it bounces away",e:{onCatch:"bounce"},pic:"↩️"}];
-    case "procedures":
-      if(m==="jump") return [{t:"press SPACE to jump",e:{control:"keys"},pic:"⌨️"},{t:"click the mouse to jump",e:{control:"mouse"},pic:"🖱️"},speed];
-      if(m==="shoot") return [{t:"← → to move, SPACE to shoot",e:{control:"keys"},pic:"⌨️"},{t:"move the mouse, click to shoot",e:{control:"mouse"},pic:"🖱️"},speed];
-      return [{t:m==="roam"?"arrow keys to move around":"← → arrow keys to move",e:{control:"keys"},pic:"⌨️"},{t:"the "+hero+" follows the mouse",e:{control:"mouse"},pic:"🖱️"},speed];
-    case "resources":
-      return [{t:"3 lives, lose 1 when hit",e:{lives:3},pic:"❤️"},{t:"a 30-second timer",e:{timer:30},pic:"⏱️"},
-        collect?{t:"every "+it1+" turns into a coin",e:{coins:true},pic:"🪙"}:{t:"a 60-second timer",e:{timer:60},pic:"⏳"}];
-    case "conflict":
-      if(m==="dodge") return [{t:"the "+it+" fall faster and faster",e:{speedUp:true},pic:"⏩"},{t:"a little ghost chases the "+hero,e:{enemy:"👻"},pic:"👻"},{t:"twice as many "+it,e:{dense:true},pic:"✖️2"}];
-      if(m==="jump") return [{t:"it gets faster and faster",e:{speedUp:true},pic:"⏩"},{t:"the "+it+" get bigger",e:{tall:true},pic:"⬆️"},{t:"birds fly in from the sky",e:{hazard:"🐦"},pic:"🐦"}];
-      return [{t:"bombs fall from the sky",e:{hazard:"💣"},pic:"💣"},{t:"the "+it+" come faster and faster",e:{speedUp:true},pic:"⏩"},{t:"a little ghost chases the "+hero,e:{enemy:"👻"},pic:"👻"}];
-    case "boundaries":
-      if(m==="jump") return [{t:"stay between the ground and the sky",e:{bound:"clamp"},pic:"🧱"},{t:"jump too high and bonk the ceiling",e:{bound:"ceiling"},pic:"🔝"}];
-      return [{t:"can't leave the screen",e:{bound:"clamp"},pic:"🧱"},{t:"leave on the left, come back on the right",e:{bound:"wrap"},pic:"🌀"},{t:"bounce back at the edge",e:{bound:"bounce"},pic:"🏓"}];
-    case "outcome":
-      return [{t:"get 10 points to win, with confetti",e:{outcome:"celebrate",winAt:10},pic:"🎉"},{t:"show the score at the end, click to replay",e:{outcome:"endScreen"},pic:"🔢"},{t:"a high-score leaderboard",e:{outcome:"leaderboard"},pic:"🏆"}];
-    case "players":
-      return [{t:"one player",e:{players:1},pic:"🙂"},{t:"two players team up (arrows + WASD)",e:{players:2,pmode:"coop"},pic:"🤝"},{t:"two players race for the high score",e:{players:2,pmode:"versus"},pic:"⚔️"}];
-    case "objectives":
-      if(collect) return [{t:"collect 10 "+it+" to win",e:{target:10},pic:"🔟"},{t:"the longer you last, the better",e:{survive:true},pic:"⏱️"}];
-      return [{t:"last 30 seconds to win",e:{timer:30,surviveWin:true},pic:"🏅"},{t:"the longer you last, the better",e:{survive:true},pic:"⏱️"}];
-  }
-  return [];
-}
-/* open design questions: they name a gap, never a solution; the kid supplies the answer */
-function questionFor(col,c){
-  const it=c.item.n, hero=c.hero.n, m=c.mode, it1=sing(it);
-  return ({
-    rules:m==="dodge"?"When a "+it1+" hits you, what do you want to happen?":m==="jump"?"When you bump a "+it1+", what do you want to happen?":m==="shoot"?"When you hit a "+it1+", what do you want to happen?":"When you touch a "+it1+", what do you want to happen?",
-    procedures:"How do you want to control the "+hero+"?",
-    conflict:"What could make this game a bit harder?",
-    resources:"Does the "+hero+" have anything that can run out?",
-    outcome:"When does your game end?",
-    boundaries:"When the "+hero+" reaches the edge, what do you want to happen?",
-    players:"Who plays this game?",
-    objectives:"What does the player need to do?"
-  })[col];
-}
-const WHY={
-  rules:"Touching things only makes them disappear. No \"if… then…\" yet.",
-  procedures:"Keyboard and mouse both work right now. Pick one that fits your game.",
-  conflict:"Nothing gets in the way, so the game is too easy.",
-  resources:"Nothing runs out, so players never feel nervous.",
-  outcome:"The game doesn't know when to end yet.",
-  boundaries:"Right now it just stops at the screen edge.",
-  players:"Right now it's one player.",
-  objectives:"Players don't know how to win yet."
-};
-
-
-
-const STEMS={
-  rules:c=>c.mode==="dodge"?`When a ${sing(c.item.n)} hits the ${c.hero.n}, `:c.mode==="jump"?`When the ${c.hero.n} bumps a ${sing(c.item.n)}, `:c.mode==="shoot"?`When a bubble hits a ${sing(c.item.n)}, `:`When the ${c.hero.n} touches a ${sing(c.item.n)}, `,
-  procedures:()=>"I want to use ",conflict:()=>"I want the game to have ",resources:c=>`The ${c.hero.n} has `,outcome:()=>"When the game ends, ",
-  boundaries:c=>`When the ${c.hero.n} reaches the edge, `,players:()=>"This game is for ",objectives:()=>"To win, you need to "
-};
-const COL_WORDS={
-  players:["two","2 player","friend","team","together","versus","race","one player","alone"],outcome:["end","win","lose","leaderboard","score at","confetti","replay","game over"],
-  resources:["life","lives","heart","coin","timer","time","seconds","health","run out"],conflict:["enemy","enemies","bomb","ghost","obstacle","hard","harder","faster","danger"],
-  boundaries:["edge","wall","border","screen","wrap"],procedures:["key","mouse","control","press","click","arrow"],objectives:["goal","collect","to win","target"],
-  rules:["touch","if ","when","point","score","grow","disappear","bounce","happen","nothing"]
-};
 /* robot avatar: round yellow toy-brick head (R3) */
 const ROBOT=`<svg class="avatar" viewBox="0 0 120 120" aria-hidden="true"><rect x="34" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="68" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="18" y="22" width="84" height="80" rx="14" fill="#FFD166"/><rect x="18" y="90" width="84" height="12" rx="6" fill="#D9A13A"/><rect x="26" y="30" width="22" height="8" rx="4" fill="#FFE6A6"/><g class="eye"><rect x="35" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="70" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="39" y="51" width="5" height="5" fill="#fff"/><rect x="74" y="51" width="5" height="5" fill="#fff"/></g><ellipse cx="30" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><ellipse cx="90" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><path d="M49 74 Q60 85 71 74" stroke="#15102A" stroke-width="6" fill="none" stroke-linecap="round"/></svg>`;
 /* brand logo: arcade token stamped with a toy brick; hops and now and then flips */
@@ -508,7 +381,7 @@ function reinterpret(s,t){
   if(s.col==="character"){const h=parseHero(t);s.text=h.e+" "+h.n;s.effect={char:{e:h.e,n:h.n}};return;}
   if(s.col==="objectives"&&s.effect&&s.effect.mode){const a=parseAction(t);s.text="“"+t+"”";s.sub=MODES[a.mode].obj(a.item.n);s.effect={mode:a.mode,item:a.item};return;}
   s.text=t;let best=-1,score=0;const opts=optionsFor(s.col,ctx());
-  {const m=bestMatch(t,opts);best=m.best;score=m.score;}
+  {const m=bestMatch(t,opts,ctx());best=m.best;score=m.score;}
   if(opts.some(o=>o.t===t)){const o=opts.find(o=>o.t===t);s.sub=null;s.effect=o.e;}
   else if(score>=1){s.sub="I read it as: "+opts[best].t;s.effect=opts[best].e;}
   else{s.sub="This prototype can't build this one yet";s.effect=null;}
@@ -555,7 +428,7 @@ function pickOption(i){
 function matchFree(t,quiet){
   const c=UI.choice,body=t.startsWith(c.stem)?t.slice(c.stem.length):t;
   let best=-1,score=0;
-  {const m=bestMatch(body,c.options);best=m.best;score=m.score;}
+  {const m=bestMatch(body,c.options,ctx());best=m.best;score=m.score;}
   if(!quiet)say(esc(t),"kid");
   if(score>=1){const o=c.options[best];addSticker(c.col,t,"I read it as: "+o.t,o.e);
     toConfirm(`I read it as “${esc(o.t)}” and made a red note. If that's not right, tap ✏️ Edit.`);}
