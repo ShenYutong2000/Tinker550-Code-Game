@@ -27,6 +27,10 @@ npm run preview
 - `src/styles/app.css`：页面主样式，保留原有规则顺序与响应式断点。
 - `src/game/engine.js`：原型 Canvas 游戏引擎；页面试玩与导出文件共用这一份源码。
 - `src/game/export.js`：生成独立 HTML，并处理下载或复制代码的导出流程。
+- `src/design/catalog.js`：八个设计维度、角色、道具和游戏模式的原始词条。
+- `src/design/parse.js`：角色、动作和自由文本选项的匹配解析。
+- `src/design/options.js`：根据游戏上下文生成设计选项、引导问题和句子开头。
+- `tests/design-parity.test.mjs`：将词条与解析结果同原始 HTML 对照；运行 `npm run test:design`。
 - `baseline/`：第一步保存的原始文件、截图和操作基准。
 
-第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。应用其余逻辑仍在 `index.html`，后续步骤再拆分。
+第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。第五步拆出设计词库与解析，保留原有词条、规则顺序和输出。应用其余逻辑仍在 `index.html`，后续步骤再拆分。
