@@ -10,9 +10,14 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build && node scripts/make-file-preview.mjs",
     "preview": "vite preview --host 127.0.0.1",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "test:unit": "node --test tests/baseline-fidelity.test.mjs tests/design-parity.test.mjs tests/state-storage.test.mjs tests/conversation-flow.test.mjs",
+    "test:built": "node tests/app-boot.test.mjs",
     "test:design": "node tests/design-parity.test.mjs",
     "test:state": "node tests/state-storage.test.mjs",
-    "test:flow": "npm run build && node tests/conversation-flow.test.mjs && node tests/app-boot.test.mjs"
+    "test:flow": "npm run build && node tests/conversation-flow.test.mjs && npm run test:built",
+    "check": "npm run check:syntax && npm run test:unit && npm run build && npm run test:built",
+    "test": "npm run check"
   },
   "devDependencies": {
     "vite": "^8.3.5"
