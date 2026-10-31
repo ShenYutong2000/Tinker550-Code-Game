@@ -8,9 +8,10 @@
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "vite build && node scripts/make-file-preview.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test:design": "node tests/design-parity.test.mjs"
+    "test:design": "node tests/design-parity.test.mjs",
+    "test:state": "node tests/state-storage.test.mjs"
   },
   "devDependencies": {
     "vite": "^8.3.5"

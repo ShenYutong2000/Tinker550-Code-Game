@@ -50,12 +50,25 @@
 </div>
 <div id="layer"></div>
 
+<script>
+if(location.protocol==="file:"&&!document.documentElement.hasAttribute("data-standalone-preview")){
+  const filePreview=location.pathname.toLowerCase().replace(/\\/g,"/").endsWith("/dist/index.html")?"./standalone-preview.html":"./dist/standalone-preview.html";
+  const notice=document.createElement("div");
+  notice.setAttribute("role","alert");
+  notice.style.cssText="position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:24px;background:#18141F;color:#EEEAF6;font:16px system-ui,sans-serif";
+  notice.innerHTML=`<div style="max-width:520px"><h1 style="font-size:22px">请打开构建后的预览文件</h1><p>当前 index.html 是 Vite 源码入口，直接双击时浏览器无法加载模块。请先在项目目录运行 <code>npm run build</code>。</p><p><a href="${filePreview}" style="color:#FFD166">打开单文件预览</a></p></div>`;
+  document.body.appendChild(notice);
+}
+</script>
+
 <script type="module">
 import "./src/game/engine.js";
 import { exportStandaloneGame } from "./src/game/export.js";
 import { COLS, COLMAP, CHAR_COL, MODES } from "./src/design/catalog.js";
-import { sing, cap, bestMatch, parseHero, parseAction } from "./src/design/parse.js";
+import { sing, bestMatch, parseHero, parseAction } from "./src/design/parse.js";
 import { optionsFor, questionFor, STEMS, COL_WORDS } from "./src/design/options.js";
+import { createProject, restoreProject, createUIState, projectCharacters, isBuilt, buildProjectSpec, projectContext, updateAutomaticName } from "./src/state/project.js";
+import { readBotName, saveBotName, readProjects, saveProject, clearSavedData, resetFromLocation } from "./src/state/storage.js";
 (function(){
 "use strict";
 const $=(s,r=document)=>r.querySelector(s);
@@ -63,9 +76,8 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 let _id=Date.now()%100000; const uid=()=>"s"+(++_id);
 const rot=()=>(Math.random()*5-2.5).toFixed(1)+"deg";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const store={get(k){try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){return false;}}};
 /* ?reset or #reset in the address wipes saved projects before anything loads */
-try{if(/[?&]reset\b/.test(location.search)||location.hash==="#reset"){["tinkercade.projects.v6","tinkercade.bot.v6"].forEach(k=>localStorage.removeItem(k));history.replaceState(null,"",location.pathname);}}catch(e){}
+resetFromLocation();
 const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* robot avatar: round yellow toy-brick head (R3) */
@@ -79,27 +91,15 @@ const LOGO=`<svg viewBox="0 0 100 100" width="36" height="36" aria-hidden="true"
 const X_ICON=`<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3 3 13" stroke="currentColor" stroke-width="1.8"/></svg>`;
 
 /* ---------- state ---------- */
-const BOTKEY="tinkercade.bot.v6";
-const botName=()=>P.botName||store.get(BOTKEY)||"Robo";
-function fresh(){return {id:"p"+Date.now().toString(36),botName:store.get(BOTKEY)||"",name:"",nameEdited:false,phase:"opening",stickers:[],activeChar:null,seen:[],chat:[],versions:[],lastBuilt:[],prediction:null,saved:[],updated:Date.now()};}
+const botName=()=>P.botName||readBotName()||"Robo";
+function fresh(){return createProject(readBotName()||"");}
 let P=fresh();
-const UI={expanded:new Set(),editing:null,boardOpen:false,menuOpen:false,onboardQ:[],gen:null,choice:null,tab:"create",sideOpen:innerWidth>900,paneOpen:false,reveal:false};
-const chars=()=>P.stickers.filter(s=>s.col==="character");
-const built=id=>P.lastBuilt.includes(id);
-function buildSpec(includeNew){
-  const sp={speed:1};
-  P.stickers.filter(s=>(s.status==="ok"||includeNew)&&s.effect&&s.col!=="character").forEach(s=>Object.assign(sp,s.effect));
-  const cs=chars().filter(s=>s.status==="ok"||includeNew).map(s=>({id:s.id,...s.effect.char}));
-  const act=cs.find(c=>c.id===P.activeChar)||cs[0];
-  sp.hero=act||null;sp.others=cs.filter(c=>c!==act);
-  return JSON.parse(JSON.stringify(sp));
-}
-function ctx(){const sp=buildSpec(true);return {hero:sp.hero||{n:"hero",e:"👾"},item:sp.item||{n:"stars",e:"⭐"},mode:sp.mode||"catch"};}
-function autoName(){
-  if(P.nameEdited)return;
-  const h=chars()[0],o=P.stickers.find(s=>s.col==="objectives"&&s.effect&&s.effect.mode);
-  P.name=h?(o?cap(h.effect.char.n)+": "+cap(o.text.replace(/[“”]/g,"")):"The "+cap(h.effect.char.n)+" Game").slice(0,40):"";
-}
+const UI=createUIState(innerWidth);
+const chars=()=>projectCharacters(P);
+const built=id=>isBuilt(P,id);
+const buildSpec=includeNew=>buildProjectSpec(P,includeNew);
+const ctx=()=>projectContext(P);
+const autoName=()=>updateAutomaticName(P);
 
 /* ---------- conversation: one message at a time ---------- */
 const Q=[];let pumping=false;
@@ -183,8 +183,7 @@ function renderComposer(){
 }
 
 /* ---------- sidebar / header / pane ---------- */
-const KEY="tinkercade.projects.v6";
-const allProjects=()=>store.get(KEY)||[];
+const allProjects=()=>readProjects();
 function renderSide(){
   const ok=P.stickers.filter(s=>s.status==="ok"),lit=new Set(ok.map(s=>s.col));
   const keys=["character",...COLS.map(c=>c.key)];
@@ -444,7 +443,7 @@ function promptText(t){
 function nameBot(t){
   let n=t.replace(/^(叫|你叫|就叫|call you|your name is|you're|you are|name:?)\s*/i,"").replace(/[。！!，,.]/g,"").trim().slice(0,14);n=n.charAt(0).toUpperCase()+n.slice(1);
   if(!n)return;
-  say(esc(n),"kid");P.botName=n;store.set(BOTKEY,n);
+  say(esc(n),"kid");P.botName=n;saveBotName(n);
   say(`${esc(n)}! I love that name. From now on, I'm <b>${esc(n)}</b>.`);
   say("Today we'll make a game you can really play. First, tell me: <b>who</b> is the hero, and what is it <b>doing</b>?");
   P.phase="opening";render();
@@ -656,15 +655,12 @@ function rollback(){
 /* ---------- projects + export ---------- */
 function autosave(){
   if(!P.stickers.length)return false;
-  const list=allProjects().filter(p=>p.id!==P.id);
-  P.updated=Date.now();list.unshift(JSON.parse(JSON.stringify(P)));
-  const ok=store.set(KEY,list.slice(0,20));renderSide();return ok;
+  const ok=saveProject(P);renderSide();return ok;
 }
 function toast(t){const el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2200);}
 function loadProject(p){
   Q.length=0;
-  P=Object.assign(fresh(),JSON.parse(JSON.stringify(p)));P.saved=P.saved||[];
-  if(["generating","choice","newchar"].includes(P.phase))P.phase=P.versions.length?"directions":(P.stickers.length?"confirm":"opening");
+  P=restoreProject(p,readBotName()||"");
   UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.paneOpen=!!P.versions.length;UI.tab=P.versions.length?"preview":"create";
   renderMsgs();render();
   const v=P.versions[P.versions.length-1];
@@ -678,7 +674,7 @@ function restartAll(){
   const b=document.querySelector("[data-act=restart]");
   if(Date.now()-restartArmed>3000){restartArmed=Date.now();if(b){b.classList.add("arm");b.textContent="Tap again to delete all projects and start over";}
     setTimeout(()=>{const x=document.querySelector("[data-act=restart]");if(x&&Date.now()-restartArmed>=3000){x.classList.remove("arm");x.textContent="↺ Start over";}},3100);return;}
-  restartArmed=0;clearTimeout(UI.askTimer);clearAsk();UI.pendingSpec=null;try{localStorage.removeItem(KEY);localStorage.removeItem(BOTKEY);}catch(e){}
+  restartArmed=0;clearTimeout(UI.askTimer);clearAsk();UI.pendingSpec=null;clearSavedData();
   Q.length=0;P=fresh();P.botName="";UI.expanded=new Set();UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
   game.clear();renderMsgs();render();greet();
 }
@@ -780,7 +776,7 @@ function greet(){
 function renameBot(){
   const m=sheet("Rename your buddy","The new name works right away",`<input class="name-in" id="botIn" maxlength="14" value="${esc(botName())}" aria-label="Robot's name"><div class="row"><button class="btn" id="botOk">That's it!</button></div>`);
   const i=m.querySelector("#botIn");i.focus();i.select();
-  const ok=()=>{const n=i.value.trim().slice(0,14);if(!n)return;P.botName=n;store.set(BOTKEY,n);m.remove();say(`Sure! From now on, I'm <b>${esc(n)}</b>!`);render();};
+  const ok=()=>{const n=i.value.trim().slice(0,14);if(!n)return;P.botName=n;saveBotName(n);m.remove();say(`Sure! From now on, I'm <b>${esc(n)}</b>!`);render();};
   m.querySelector("#botOk").onclick=ok;i.addEventListener("keydown",e=>{if(e.key==="Enter")ok();});
 }
 render();greet();
