@@ -18,7 +18,9 @@ npm run build
 npm run preview
 ```
 
-构建结果位于 `dist/`，可部署到静态网站；构建使用相对资源路径，适用于网站子目录。首次使用时的机器人名称与项目由浏览器 `localStorage` 决定，复核首屏请使用没有该站点数据的浏览器会话。Google Fonts 需要联网才能按原型显示。
+`index.html` 是 Vite 源码入口，不能直接双击作为运行中的网站。若要**不启动服务器、直接双击预览**，先运行 `npm run build`，然后打开 `dist/standalone-preview.html`。构建会将页面样式与应用脚本内联成单个 HTML 文件。直接双击根目录的 `index.html` 会显示这个入口说明。
+
+`dist/index.html` 是供静态网站服务器部署的版本；构建使用相对资源路径，适用于网站子目录。`dist/standalone-preview.html` 适合本机文件预览，也可以单独发送给团队成员。首次使用时的机器人名称与项目由浏览器 `localStorage` 决定；`file://` 与 `http://localhost` 的站点数据彼此独立。Google Fonts 需要联网才能按原型显示。
 
 ## 当前结构
 
@@ -30,7 +32,10 @@ npm run preview
 - `src/design/catalog.js`：八个设计维度、角色、道具和游戏模式的原始词条。
 - `src/design/parse.js`：角色、动作和自由文本选项的匹配解析。
 - `src/design/options.js`：根据游戏上下文生成设计选项、引导问题和句子开头。
+- `src/state/project.js`：项目与界面状态的初始值、`v6` 项目恢复和游戏配置计算。
+- `src/state/storage.js`：沿用 `tinkercade.projects.v6` 与 `tinkercade.bot.v6` 的本地读写。
 - `tests/design-parity.test.mjs`：将词条与解析结果同原始 HTML 对照；运行 `npm run test:design`。
+- `tests/state-storage.test.mjs`：验证旧项目读取、保存顺序、容量和存储失败回退；运行 `npm run test:state`。
 - `baseline/`：第一步保存的原始文件、截图和操作基准。
 
-第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。第五步拆出设计词库与解析，保留原有词条、规则顺序和输出。应用其余逻辑仍在 `index.html`，后续步骤再拆分。
+第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。第五步拆出设计词库与解析。第六步拆出项目状态与本地存储，继续使用原有 `v6` 键名和 JSON 结构，不迁移或清除已保存项目。应用其余逻辑仍在 `index.html`，后续步骤再拆分。
