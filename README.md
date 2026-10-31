@@ -2,6 +2,8 @@
 
 原型重构的逐步验收基准见 [baseline/README.md](baseline/README.md)。
 
+团队开发从 [CONTRIBUTING.md](CONTRIBUTING.md) 开始；模块关系见 [docs/architecture.md](docs/architecture.md)，完整人工验收见 [docs/acceptance.md](docs/acceptance.md)。
+
 ## 本地运行
 
 需要 Node.js `20.19+`（20 系列）或 `22.12+`，以及 npm。在仓库根目录执行：
@@ -21,6 +23,14 @@ npm run preview
 `index.html` 是 Vite 源码入口，不能直接双击作为运行中的网站。若要**不启动服务器、直接双击预览**，先运行 `npm run build`，然后打开 `dist/standalone-preview.html`。构建会将页面样式与应用脚本内联成单个 HTML 文件。直接双击根目录的 `index.html` 会显示这个入口说明。
 
 `dist/index.html` 是供静态网站服务器部署的版本；构建使用相对资源路径，适用于网站子目录。`dist/standalone-preview.html` 适合本机文件预览，也可以单独发送给团队成员。首次使用时的机器人名称与项目由浏览器 `localStorage` 决定；`file://` 与 `http://localhost` 的站点数据彼此独立。Google Fonts 需要联网才能按原型显示。
+
+提交改动前运行统一检查：
+
+```bash
+npm run check
+```
+
+该命令检查语法、原型结构及样式一致性、设计解析、旧项目兼容、两轮迭代、生产构建、打包入口与游戏导出。GitHub Actions 使用同一命令检查推送和 PR。
 
 ## 当前结构
 
@@ -42,8 +52,11 @@ npm run preview
 - `tests/design-parity.test.mjs`：将词条与解析结果同原始 HTML 对照；运行 `npm run test:design`。
 - `tests/state-storage.test.mjs`：验证旧项目读取、保存顺序、容量和存储失败回退；运行 `npm run test:state`。
 - `tests/conversation-flow.test.mjs`：验证从首版设计到第二版生成，以及切换项目时消息队列隔离；运行 `npm run test:flow`。
+- `tests/baseline-fidelity.test.mjs`：检查原始文件哈希及静态页面、样式、游戏引擎与原型一致。
+- `tests/app-boot.test.mjs`：启动生产包并验证事件绑定、旧项目加载和独立游戏 HTML 导出。
+- `.github/workflows/quality.yml`：在支持的 Node.js 版本上运行统一检查。
 - `baseline/`：第一步保存的原始文件、截图和操作基准。
 
 第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。第五步拆出设计词库与解析。第六步拆出项目状态与本地存储，继续使用原有 `v6` 键名和 JSON 结构，不迁移或清除已保存项目。第七步拆出界面模板与 DOM 渲染。第八步拆出对话流程和事件绑定，保留原有交互文案及触发条件。
 
-第八步验收：运行 `npm run test:flow`，再用 `npm run dev` 打开页面。完成命名、创建游戏、确认两张便签、生成并试玩首版；描述试玩结果，选择一条改进建议，确认新便签并生成第二版。检查侧边栏保存与加载、撤销上一版和导出 HTML。`npm run test:flow` 会先构建，再执行两轮流程和打包入口启动测试。
+完整验收仍需在浏览器中走通三个视口、两轮迭代、保存与加载、撤销和导出；步骤见 [docs/acceptance.md](docs/acceptance.md)。
