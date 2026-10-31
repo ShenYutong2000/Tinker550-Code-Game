@@ -24,7 +24,8 @@ npm run preview
 
 ## 当前结构
 
-- `index.html`：页面外壳、静态结构与仍待拆分的应用 JavaScript。
+- `index.html`：页面外壳、静态结构与 Vite 应用入口。
+- `src/app.js`：初始化项目、游戏引擎和各模块，处理项目切换与导出。
 - `src/styles/base.css`：原型最初位于 `<head>` 的基础样式。
 - `src/styles/app.css`：页面主样式，保留原有规则顺序与响应式断点。
 - `src/game/engine.js`：原型 Canvas 游戏引擎；页面试玩与导出文件共用这一份源码。
@@ -34,8 +35,15 @@ npm run preview
 - `src/design/options.js`：根据游戏上下文生成设计选项、引导问题和句子开头。
 - `src/state/project.js`：项目与界面状态的初始值、`v6` 项目恢复和游戏配置计算。
 - `src/state/storage.js`：沿用 `tinkercade.projects.v6` 与 `tinkercade.bot.v6` 的本地读写。
+- `src/ui/templates.js`：机器人与品牌图形、各阶段交互卡片、侧边栏、设计地图、引导浮层等原有展示模板。
+- `src/ui/render.js`：根据项目和界面状态更新消息区、输入区、侧边栏、预览面板、移动端标签与弹层。
+- `src/conversation/flow.js`：机器人消息队列、引导、设计确认、生成、试玩反馈与迭代流程。
+- `src/events/bind.js`：页面点击、键盘和输入事件绑定。
 - `tests/design-parity.test.mjs`：将词条与解析结果同原始 HTML 对照；运行 `npm run test:design`。
 - `tests/state-storage.test.mjs`：验证旧项目读取、保存顺序、容量和存储失败回退；运行 `npm run test:state`。
+- `tests/conversation-flow.test.mjs`：验证从首版设计到第二版生成，以及切换项目时消息队列隔离；运行 `npm run test:flow`。
 - `baseline/`：第一步保存的原始文件、截图和操作基准。
 
-第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。第五步拆出设计词库与解析。第六步拆出项目状态与本地存储，继续使用原有 `v6` 键名和 JSON 结构，不迁移或清除已保存项目。应用其余逻辑仍在 `index.html`，后续步骤再拆分。
+第四步将游戏引擎与导出流程拆为模块。Vite 的 `?raw` 导入在构建时把同一份引擎源码放进导出模板，使导出的游戏仍是单文件 HTML；导出模板中的 `<style>` 也继续内嵌。第五步拆出设计词库与解析。第六步拆出项目状态与本地存储，继续使用原有 `v6` 键名和 JSON 结构，不迁移或清除已保存项目。第七步拆出界面模板与 DOM 渲染。第八步拆出对话流程和事件绑定，保留原有交互文案及触发条件。
+
+第八步验收：运行 `npm run test:flow`，再用 `npm run dev` 打开页面。完成命名、创建游戏、确认两张便签、生成并试玩首版；描述试玩结果，选择一条改进建议，确认新便签并生成第二版。检查侧边栏保存与加载、撤销上一版和导出 HTML。`npm run test:flow` 会先构建，再执行两轮流程和打包入口启动测试。
