@@ -159,9 +159,10 @@ function editableText(s){return s.col==="character"?s.text.replace(/^\S+\s/,""):
 function reinterpret(s,t){
   if(s.col==="character"){const h=parseHero(t);s.text=h.e+" "+h.n;s.effect={char:{e:h.e,n:h.n}};return;}
   if(s.col==="objectives"&&s.effect&&s.effect.mode){const a=parseAction(t);s.text="“"+t+"”";s.sub=MODES[a.mode].obj(a.item.n);s.effect={mode:a.mode,item:a.item};return;}
-  s.text=t;let best=-1,score=0;const opts=optionsFor(s.col,ctx());
-  {const m=bestMatch(t,opts,ctx());best=m.best;score=m.score;}
-  if(opts.some(o=>o.t===t)){const o=opts.find(o=>o.t===t);s.sub=null;s.effect=o.e;}
+  s.text=t;const context=ctx(),opts=optionsFor(s.col,context);
+  const {best,score}=bestMatch(t,opts,context);
+  const exact=opts.find(o=>o.t===t);
+  if(exact){s.sub=null;s.effect=exact.e;}
   else if(score>=1){s.sub="I read it as: "+opts[best].t;s.effect=opts[best].e;}
   else{s.sub="This prototype can't build this one yet";s.effect=null;}
 }
@@ -288,7 +289,7 @@ function generate(){
   if(!news.length||P.stickers.some(s=>s.status==="new"))return;
   const c=ctx(),Pq=predictionFor(news,c),round=P.versions.length+1;
   const lines=["Turning yellow notes into rules…",`Putting the ${c.hero.n} on the canvas…`,"Adding a breathing animation…","Hooking up the keyboard and mouse…","Checking edges and bumps…"];
-  UI.gen={P:Pq,round,news,picked:null,done:false,status:lines[0],skipped:false};
+  UI.gen={P:Pq,round,news,picked:null,done:false,status:lines[0]};
   UI.boardOpen=false;P.phase="generating";UI.tab="create";
   say(P.versions.length?"Let's change your game! Quick quiz:":"Let's make your game! Quick quiz:");
   say(esc(Pq.q));
@@ -386,13 +387,13 @@ function feelReply(t){
   say(esc(t),"kid");
   const lit=new Set(P.stickers.filter(s=>s.status==="ok").map(s=>s.col)),pr=P.prediction;
   const f=FEELS.find(x=>x.re.test(t));P.feel=f?f.k:null;
-  let col=null;
+  let col=null,why;
   if(pr&&pr.guess&&!lit.has(pr.gap)){
     // the guess didn't happen: say why, then name the concept
     col=pr.gap;
     const o=P.stickers.find(s=>s.col==="objectives"&&s.effect&&s.effect.mode),act=o?o.text.replace(/[“”]/g,""):"this game";
     say(NOTHING.test(t)?"Right!":"Look closer. It doesn't actually happen.");
-    var why=`That's because you only said “${esc(act)}”. You didn't say ${MISSING[col]} yet. A computer only does what you tell it clearly.`;
+    why=`That's because you only said “${esc(act)}”. You didn't say ${MISSING[col]} yet. A computer only does what you tell it clearly.`;
   }else{
     col=Object.keys(COL_WORDS).find(k=>!lit.has(k)&&COL_WORDS[k].some(w=>t.toLowerCase().includes(w)))||(pr&&pr.gap&&!lit.has(pr.gap)&&NOTHING.test(t)?pr.gap:null);
     say(col?"You spotted it!":f?f.say:"Got it!");
@@ -449,12 +450,6 @@ function cancelChoice(){
   P.phase=P.versions.length?(P.stickers.some(s=>s.status==="new"||(s.status==="ok"&&!built(s.id)))?"confirm":"directions"):(chars().length?"confirm":"opening");
   render();
 }
-function skipGeneration(){
-  if(!UI.gen)return;
-  UI.gen.skipped=true;
-  if(UI.gen.done)finishGen();
-  else{UI.gen.status="OK, skipping. Almost done…";renderLive();}
-}
 function resetProject(project){
   projectEpoch++;
   Q.length=0;
@@ -471,7 +466,7 @@ return {
   confirmSticker, saveEdit, delSticker, pickOption, submitGuess,
   generate, finishGen, pickGo, conceptDesign, conceptOther, openPane,
   clearAsk, directions, editableText, setComposer, greet, renameBot,
-  beginAddCharacter, cancelChoice, skipGeneration, resetProject,
+  beginAddCharacter, cancelChoice, resetProject,
   isPumping:()=>pumping, isOnboardingOpen:()=>onboardingOpen
 };
 }

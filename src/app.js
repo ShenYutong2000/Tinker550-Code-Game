@@ -6,8 +6,6 @@ import { esc } from "./ui/templates.js";
 import { createRenderer } from "./ui/render.js";
 import { createConversation } from "./conversation/flow.js";
 import { bindEvents } from "./events/bind.js";
-(function(){
-"use strict";
 const $=(s,r=document)=>r.querySelector(s);
 /* ?reset or #reset in the address wipes saved projects before anything loads */
 resetFromLocation();
@@ -58,21 +56,24 @@ function loadProject(p){
   if(v&&P.phase==="playtest"){UI.paneOpen=false;UI.tab="create";UI.pendingSpec=v.spec;game.clear();render();}
   else if(v)game.load(v.spec);else game.clear();
 }
+function startFreshProject(resetAll){
+  clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;
+  P=fresh();flow.resetProject(P);
+  if(resetAll){P.botName="";UI.expanded=new Set();}
+  UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
+  game.clear();renderMsgs();render();flow.greet();
+}
 /* wipe everything (robot name, projects) and start like a first visit; asks for a second tap */
 let restartArmed=0;
 function restartAll(){
   const b=document.querySelector("[data-act=restart]");
   if(Date.now()-restartArmed>3000){restartArmed=Date.now();if(b){b.classList.add("arm");b.textContent="Tap again to delete all projects and start over";}
     setTimeout(()=>{const x=document.querySelector("[data-act=restart]");if(x&&Date.now()-restartArmed>=3000){x.classList.remove("arm");x.textContent="↺ Start over";}},3100);return;}
-  restartArmed=0;clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;clearSavedData();
-  P=fresh();flow.resetProject(P);P.botName="";UI.expanded=new Set();UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
-  game.clear();renderMsgs();render();flow.greet();
+  restartArmed=0;clearSavedData();startFreshProject(true);
 }
 function newProject(){
-  clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;
   if(autosave())toast("This project is already saved");
-  P=fresh();flow.resetProject(P);UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
-  game.clear();renderMsgs();render();flow.greet();
+  startFreshProject(false);
 }
 function sheet(title,sub,body){
   const m=renderer.createSheet(title,sub,body);
@@ -87,7 +88,7 @@ const game=window.TinkerEngine($("#cv"));
 const flow=createConversation({getProject:()=>P,UI,renderer,render,renderBoard,renderSide,renderPane,renderTabs,getBoardEl:()=>boardEl,autosave,game,botName,sheet,reduced});
 bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderSide,renderTabs,renderPane,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback});
 
-/* ---------- brand logo: token hops at uneven moments at uneven moments ---------- */
+/* ---------- brand logo: token hops at uneven moments ---------- */
 renderer.renderBrand();
 if(!reduced){const all=[...document.querySelectorAll(".pz")];
   (function go(){const n=Math.random()<.28?2:1;for(let k=0;k<n;k++){const b=all[Math.floor(Math.random()*all.length)];
@@ -100,4 +101,3 @@ if(!reduced)(function blink(){document.querySelectorAll(".eye").forEach(e=>{e.st
 
 /* ---------- boot ---------- */
 render();flow.greet();
-})();

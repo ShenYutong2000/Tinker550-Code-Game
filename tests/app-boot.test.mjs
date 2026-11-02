@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { Script } from 'node:vm';
 import { createProject, buildProjectSpec } from '../src/state/project.js';
 
 test('the modular entry boots and binds its input handlers', async () => {
@@ -63,6 +64,7 @@ test('the modular entry boots and binds its input handlers', async () => {
   saved.activeChar = 'hero';
   saved.lastBuilt = ['hero', 'goal'];
   saved.versions = [{ n: 1, spec: buildProjectSpec(saved, false), items: [], summary: 'catching stars' }];
+  saved.versions[0].spec.hero.n = '</script><script>alert(1)</script>';
   stored.set('tinkercade.projects.v6', JSON.stringify([saved]));
   for (const selector of ['#paneTitle', '#paneVer', '#rbBtn', '#legend']) elements.set(selector, element());
 
@@ -80,5 +82,10 @@ test('the modular entry boots and binds its input handlers', async () => {
   assert.equal(download.filename, 'Cat Game.html');
   assert.match(download.data, /<canvas id="cv" tabindex="0"><\/canvas>/);
   assert.match(download.data, /window\.TinkerEngine\(document\.getElementById\("cv"\)\)\.load/);
+  assert.match(download.data, /"n":"<\\\/script><script>alert\(1\)<\\\/script>"/);
+  assert.doesNotMatch(download.data, /"n":"<\/script>/);
+  const exportedScripts = [...download.data.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  assert.equal(exportedScripts.length, 2);
+  exportedScripts.forEach(([, source]) => new Script(source));
   assert.doesNotMatch(download.data, /engine\.js\?raw/);
 });

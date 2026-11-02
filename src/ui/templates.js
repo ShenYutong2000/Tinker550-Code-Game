@@ -67,8 +67,7 @@ function widgetHTML(){
 }
 function sideHTML(){
   const P=getProject();
-  const ok=P.stickers.filter(s=>s.status==="ok"),lit=new Set(ok.map(s=>s.col));
-  const keys=["character",...COLS.map(c=>c.key)];
+  const ok=P.stickers.filter(s=>s.status==="ok");
   const list=allProjects();
   return `
     <button class="sbtn new" data-act="new"><span class="plus">+</span>New project</button>

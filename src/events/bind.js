@@ -2,7 +2,7 @@ import { esc } from "../ui/templates.js";
 
 export function bindEvents({ getProject, UI, flow, render, renderBoard, renderSide, renderTabs, renderPane, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback }) {
 const $=(s,r=document)=>r.querySelector(s);
-const {say,doOpening,send,generate,confirmSticker,saveEdit,delSticker,pickOption,submitGuess,pickGo,conceptDesign,conceptOther,openPane,finishGen,autosize,renameBot,startTour}=flow;
+const {say,doOpening,send,generate,confirmSticker,saveEdit,delSticker,pickOption,submitGuess,pickGo,conceptDesign,conceptOther,openPane,autosize,renameBot,startTour}=flow;
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
@@ -38,8 +38,7 @@ document.addEventListener("click",e=>{
       addchar:flow.beginAddCharacter,
       cancel:flow.cancelChoice,
       guess:submitGuess,
-      skip:flow.skipGeneration,
-      go:finishGen,openpane:openPane,pickgo:pickGo,cdesign:conceptDesign,cother:conceptOther,dismissask:()=>{const a=document.querySelector("#pane .ask");if(a)a.remove();},closepane:()=>{UI.paneOpen=false;UI.tab="create";renderPane();renderTabs();renderLive();},
+      openpane:openPane,pickgo:pickGo,cdesign:conceptDesign,cother:conceptOther,dismissask:()=>{const a=document.querySelector("#pane .ask");if(a)a.remove();},closepane:()=>{UI.paneOpen=false;UI.tab="create";renderPane();renderTabs();renderLive();},
       side:()=>{UI.sideOpen=!UI.sideOpen;renderSide();},
       save:()=>{if(!P.stickers.length){toast("Share your first idea, then save");return;}toast(autosave()?"Saved on this device":"This browser won't let me save. Try another window.");},
       new:newProject,rename:renameBot,tour:startTour,restart:restartAll
