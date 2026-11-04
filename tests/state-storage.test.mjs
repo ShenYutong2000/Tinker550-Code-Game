@@ -3,6 +3,8 @@ import { test } from 'node:test';
 
 import { buildProjectSpec, createProject, createUIState, projectContext, restoreProject, updateAutomaticName } from '../src/state/project.js';
 import { BOT_KEY, PROJECTS_KEY, clearSavedData, readBotName, readProjects, resetFromLocation, saveBotName, saveProject } from '../src/state/storage.js';
+import { createVersionJournal, getAssessmentView, getJournalEntries, savePlaytestAssessment } from '../src/state/journal.js';
+import { createIdeaNode } from '../src/state/design-map.js';
 
 function memoryStorage(initial={}){
   const data=new Map(Object.entries(initial));
@@ -26,14 +28,23 @@ const legacy={
   lastBuilt:['s1','s2'],prediction:{round:1,gap:'rules',idx:0,guess:'you get 1 point'},saved:[],updated:12345
 };
 
-test('existing v6 JSON loads without changing its fields or game specification', () => {
+test('existing v6 JSON stays unchanged in storage and restores with a migrated design map', () => {
   const storage=memoryStorage({[PROJECTS_KEY]:JSON.stringify([legacy]),[BOT_KEY]:JSON.stringify('Bolt')});
   assert.equal(PROJECTS_KEY,'tinkercade.projects.v6');
   assert.equal(BOT_KEY,'tinkercade.bot.v6');
   assert.equal(readBotName(storage),'Bolt');
   assert.deepEqual(readProjects(storage),[legacy]);
   const loaded=restoreProject(readProjects(storage)[0],readBotName(storage));
-  assert.deepEqual(loaded,legacy);
+  const {designMap,...legacyFields}=loaded;
+  assert.deepEqual(legacyFields,legacy);
+  assert.deepEqual(designMap,{
+    nodes:[
+      {id:'card-s1',stickerId:'s1',title:'🐱 cat',x:0,y:0,status:'built'},
+      {id:'card-s2',stickerId:'s2',title:'“catching stars”',x:260,y:0,status:'built'},
+      {id:'card-s3',stickerId:'s3',title:'touch a star: it disappears, +1 point',x:520,y:0,status:'idea'}
+    ],
+    edges:[]
+  });
   assert.deepEqual(buildProjectSpec(loaded,false),legacy.versions[0].spec);
   assert.equal(buildProjectSpec(loaded,true).onCatch,'score');
   assert.deepEqual(projectContext(loaded),{hero:{id:'s1',e:'🐱',n:'cat'},item:{e:'⭐',n:'stars'},mode:'catch'});
@@ -41,15 +52,19 @@ test('existing v6 JSON loads without changing its fields or game specification',
   assert.equal(readProjects(storage)[0].stickers[0].text,'🐱 cat');
 });
 
-test('new projects and older incomplete v6 entries keep the original defaults', () => {
+test('new projects and older incomplete v6 entries keep their defaults without sidebar state', () => {
   const fresh=createProject('Bolt');
   assert.equal(fresh.botName,'Bolt');
   assert.equal(fresh.phase,'opening');
   assert.deepEqual(fresh.stickers,[]);
   assert.deepEqual(fresh.versions,[]);
   assert.deepEqual(fresh.saved,[]);
-  assert.equal(createUIState(390).sideOpen,false);
-  assert.equal(createUIState(1440).sideOpen,true);
+  assert.deepEqual(fresh.designMap,{nodes:[],edges:[]});
+  assert.equal(createUIState(390).journalOpen,true);
+  assert.equal(createUIState(390).previewOpen,true);
+  assert.equal('boardOpen' in createUIState(390),false);
+  assert.equal('sideOpen' in createUIState(390),false);
+  assert.equal('sideOpen' in createUIState(1440),false);
   const incomplete={id:'polder',phase:'generating',stickers:legacy.stickers,versions:legacy.versions};
   const loaded=restoreProject(incomplete,'Bolt');
   assert.equal(loaded.phase,'directions');
@@ -59,6 +74,19 @@ test('new projects and older incomplete v6 entries keep the original defaults', 
   unnamed.stickers=structuredClone(legacy.stickers.slice(0,2));
   updateAutomaticName(unnamed);
   assert.equal(unnamed.name,'Cat: Catching Stars');
+});
+
+test('a project containing only design notes can be saved and restored', () => {
+  const storage=memoryStorage();
+  const project=createProject('Robo');
+  project.name='Puzzle ideas';
+  const note=createIdeaNode(project,'Find the hidden key',320,180,'sky');
+  assert.equal(saveProject(project,storage),true);
+  const restored=restoreProject(readProjects(storage)[0],'Robo');
+  assert.equal(restored.designMap.nodes[0].title,'Find the hidden key');
+  assert.equal(restored.designMap.nodes[0].x,320);
+  assert.equal(restored.designMap.nodes[0].y,180);
+  assert.equal(restored.designMap.nodes[0].id,note.id);
 });
 
 test('saving keeps the v6 key, JSON format, newest-first order and 20-project limit', () => {
@@ -75,6 +103,30 @@ test('saving keeps the v6 key, JSON format, newest-first order and 20-project li
   assert.deepEqual(saved[0],project);
   assert.equal(saveBotName('Robo',storage),true);
   assert.equal(storage.raw(BOT_KEY),'"Robo"');
+});
+
+test('journal entries keep version notes, predictions and playtest reflections together', () => {
+  const project=createProject('Bolt');
+  project.versions=[{n:1,summary:'catch stars',journal:createVersionJournal([
+    {id:'s1',text:'Catch stars',col:'objectives'},
+    {id:'s2',text:'A cat is the hero',col:'character'}
+  ],'you get 1 point')}];
+  project.prediction={round:1,guess:'you get 1 point'};
+  const UI=createUIState(1440);
+  assert.deepEqual(getJournalEntries(project)[0],{
+    version:1,
+    steps:[
+      {stickerId:'s1',text:'Catch stars',category:'objectives'},
+      {stickerId:'s2',text:'A cat is the hero',category:'character'}
+    ],
+    expected:'you get 1 point',assessment:null
+  });
+  assert.deepEqual(getAssessmentView(project,UI),{state:'ready',expected:'you get 1 point',canStart:true});
+  const assessment=savePlaytestAssessment(project,{response:'nothing happened',feeling:'hard',discovery:'rules'});
+  assert.equal(assessment.alignment,'different');
+  assert.equal(assessment.expected,'you get 1 point');
+  assert.equal(getJournalEntries(project)[0].assessment.response,'nothing happened');
+  assert.equal(getAssessmentView(project,UI).state,'complete');
 });
 
 test('reset and unavailable storage retain the original fallback behavior', () => {
