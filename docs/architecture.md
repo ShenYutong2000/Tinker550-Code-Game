@@ -22,7 +22,7 @@ flowchart LR
 - `index.html` 保留页面静态容器和 Vite 入口；中间 Design Map 是常驻主工作区，左右 Journal 与 Preview 可独立收起；`src/styles/` 管理三列与手机底部导航布局。
 - `src/app.js` 创建项目状态、界面状态、Canvas 引擎和各模块，负责项目切换、撤销、保存与导出。项目对象 `P` 会在加载或新建时替换，依赖方通过 `getProject()` 读取当前对象。
 - `src/conversation/flow.js` 管理消息队列、设计地图引导、便签确认、预测、生成、试玩反馈和迭代。切换项目时 `resetProject()` 清除未显示的旧消息、生成定时器和旧引导；生成版本时保存本轮设计要点，收到试玩反馈时写入该版本的评估记录。
-- `src/events/bind.js` 把现有 `data-*` 属性、键盘与输入事件连接到流程和渲染。新增按钮时，要同时检查模板属性和这里的处理分支。
+- `src/events/bind.js` 把现有 `data-*` 属性、鼠标/触摸指针、键盘与输入事件连接到流程、地图状态和渲染。拖动地图卡片只在移动结束时保存；新增画布工具时，同时检查模板属性、状态操作与这里的事件分支。
 - `src/ui/templates.js` 提供现有 HTML 模板与展示文案；`src/ui/render.js` 把当前项目和 UI 状态映射到 DOM，包括常驻设计地图、Journal 与 Preview 的独立显隐状态。流程决定**何时**渲染，渲染模块决定**如何**呈现。
 - `src/design/` 存放设计词库、文本解析和建议选项；`src/state/project.js` 生成项目状态与游戏配置；`src/state/design-map.js` 管理自由画布规划节点、位置、连接，并同步游戏便签状态；`src/state/journal.js` 生成 Journal/Assessment 展示数据，并把试玩反思保存到版本；`src/state/storage.js` 集中处理浏览器存储。
 - `src/game/engine.js` 是试玩引擎。`src/game/export.js` 使用 Vite 的 `?raw` 导入同一份引擎源码，生成可独立运行的游戏 HTML。

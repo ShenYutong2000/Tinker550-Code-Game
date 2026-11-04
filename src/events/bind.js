@@ -1,7 +1,7 @@
 import { esc } from "../ui/templates.js";
 import { connectMapNodes, createIdeaNode, deleteIdeaNode, MAP_HEIGHT, MAP_NOTE_WIDTH, MAP_WIDTH, moveMapNode } from "../state/design-map.js";
 
-export function bindEvents({ getProject, UI, flow, render, renderBoard, renderProjects, renderTabs, renderPane, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback, openProjects }) {
+export function bindEvents({ getProject, UI, flow, render, renderBoard, renderProjects, renderTabs, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback, openProjects }) {
 const $=(s,r=document)=>r.querySelector(s);
 const {say,doOpening,send,generate,confirmSticker,saveEdit,delSticker,pickOption,submitGuess,pickGo,conceptDesign,conceptOther,openPane,autosize,renameBot,startTour}=flow;
 function closeProjects(){const modal=$("#projectManager");if(modal){modal.remove();$("[data-act=projects]")?.setAttribute("aria-expanded","false");}}

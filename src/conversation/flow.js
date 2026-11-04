@@ -56,7 +56,7 @@ function guideTarget(key){
   if(key==="iterate"){const m=[...document.querySelectorAll("#msgs .msg.sprout")];return m[m.length-1]||null;}
   if(key==="boardintro")return document.querySelector("#boardColumn .column-head");
   if(!getBoardEl())return null;
-  if(key==="howto")return getBoardEl().querySelector(".sticky.new")||getBoardEl().querySelector(".sticky")||getBoardEl().querySelector(".entity");
+  if(key==="howto")return getBoardEl().querySelector(".sticky.new")||getBoardEl().querySelector(".sticky")||getBoardEl().querySelector(".map-node");
   if(key==="gen")return getBoardEl().querySelector("#boardFoot .btn");
   return getBoardEl().querySelector(`[data-col="${key}"]`);
 }
@@ -73,7 +73,7 @@ function runOnboarding(){
   const info=GUIDE[key]||(key==="character"?CHAR_COL:COLMAP[key]);
   const inSheet=el.closest(".board-column");
   let block,spot;
-  const par=inSheet?el.parentElement.closest(".col,.entity,.board-foot"):null;
+  const par=inSheet?el.parentElement.closest(".map-node,.map-category-tray,.board-foot"):null;
   if(inSheet){inSheet.classList.add("focusing");el.classList.add("focused");if(par)par.classList.add("focus-parent");}
   else{block=document.createElement("div");block.className="spot-block";spot=document.createElement("div");spot.className="spot";document.body.append(block,spot);}
   el.scrollIntoView({block:"center",behavior:"smooth"});

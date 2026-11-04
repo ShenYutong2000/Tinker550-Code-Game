@@ -97,7 +97,7 @@ function exportHTML(){
 
 const game=window.TinkerEngine($("#cv"));
 const flow=createConversation({getProject:()=>P,UI,renderer,render,renderBoard,renderPane,renderTabs,getBoardEl:()=>boardEl,autosave,game,botName,sheet,reduced});
-bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderProjects,renderTabs,renderPane,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
+bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderProjects,renderTabs,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
 
 /* ---------- brand logo: token hops at uneven moments ---------- */
 renderer.renderBrand();

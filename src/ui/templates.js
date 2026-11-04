@@ -111,8 +111,7 @@ function stickerHTML(s){
   if(s.status==="new")return `<div class="sticky new ${s.pop?"pop":""}" style="--rot:${s.rot}" role="button" tabindex="0" data-confirm="${s.id}" aria-label="Confirm note: ${esc(s.text)}"><button class="x" data-del="${s.id}" aria-label="Tear off this note">×</button>${esc(s.text)}${s.sub?`<span class="sub">${esc(s.sub)}</span>`:""}<span class="cta">Tap to confirm</span><button class="ed" data-edit="${s.id}" aria-label="Rewrite this note">✏️ Edit</button></div>`;
   return `<div class="sticky ok ${s.pop?"pop":""}" style="--rot:${s.rot}">${esc(s.text)}${s.sub?`<span class="sub">${esc(s.sub)}</span>`:""}${nofx}<button class="ed ok-ed" data-edit="${s.id}" aria-label="Changed your mind? Rewrite this note" title="Changed your mind? Edit it">✏️</button></div>`;
 }
-function boardHTML(){return boardCanvasHTML();}
-function boardCanvasHTML(){
+function boardHTML(){
   const P=getProject(), nodes=P.designMap.nodes||[];
   const charsInGame=chars(), active=charsInGame.find(c=>c.id===P.activeChar)||charsInGame[0];
   const zoom=Math.max(.35,Math.min(1.2,Number(UI.mapZoom)||.8));
