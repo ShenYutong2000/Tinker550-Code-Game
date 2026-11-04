@@ -48,7 +48,7 @@ function autosave(){
 function toast(t){const el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2200);}
 function loadProject(p){
   P=restoreProject(p,readBotName()||"");flow.resetProject(P);
-  UI.onboardQ=[];UI.gen=null;UI.connectMode=false;UI.connectFrom=null;
+  UI.onboardQ=[];UI.gen=null;UI.lens=null;UI.linking=false;UI.linkFrom=null;UI.idea=null;UI.ideaText="";
   const v=P.versions[P.versions.length-1];
   const awaitingPlay=!!v&&P.phase==="playtest";
   UI.journalOpen=true;UI.previewOpen=!!v||UI.previewOpen;
@@ -60,7 +60,7 @@ function loadProject(p){
 function startFreshProject(resetAll){
   clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;
   P=fresh();flow.resetProject(P);
-  UI.connectMode=false;UI.connectFrom=null;
+  UI.lens=null;UI.linking=false;UI.linkFrom=null;UI.idea=null;UI.ideaText="";
   if(resetAll){P.botName="";UI.expanded=new Set();}
   UI.journalOpen=true;
   UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;

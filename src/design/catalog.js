@@ -1,5 +1,6 @@
 /* ---------- design vocabulary ---------- */
 export const COLS=[
+  {key:"character",en:"CHARACTERS",zh:"Characters",ic:"🧩",tip:"This is your game's hero! It becomes a real, moving character on the canvas. You can add more characters later.",eg:"e.g. a cat, a robot."},
   {key:"players",en:"PLAYERS",zh:"Players",ic:"👥",tip:"Is this game for one person, or friends too? Do you team up, or compete?",eg:"e.g. two players team up: one uses arrow keys, one uses WASD."},
   {key:"objectives",en:"OBJECTIVES",zh:"Goal",ic:"🎯",tip:"What is the player trying to do? What counts as winning? Without a goal, players don't know what to do.",eg:"e.g. collect 10 stars."},
   {key:"procedures",en:"PROCEDURES",zh:"Controls",ic:"🕹️",tip:"What do the player's fingers do: which keys, how the mouse moves. It's how you talk to the game.",eg:"e.g. use ← → to move."},
@@ -10,7 +11,6 @@ export const COLS=[
   {key:"outcome",en:"OUTCOME",zh:"Ending",ic:"🏁",tip:"What happens when the game ends? A party, a score, or play again right away?",eg:"e.g. reach 10 points to win, with confetti."}
 ];
 export const COLMAP=Object.fromEntries(COLS.map(c=>[c.key,c]));
-export const CHAR_COL={key:"character",en:"MY CHARACTER",zh:"My character",ic:"🧩",tip:"This is your game's hero! It becomes a real, moving character on the canvas. You can add more characters later.",eg:"e.g. a cat, a robot."};
 
 export const HEROES=[
   {k:["猫","cat","kitty","kitten"],e:"🐱",n:"cat"},{k:["狗","dog","puppy"],e:"🐶",n:"dog"},{k:["机器人","robot"],e:"🤖",n:"robot"},

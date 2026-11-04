@@ -72,11 +72,10 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
   }
   function renderBoard(boardEl) {
     if (!boardEl) boardEl=$("#boardColumn");
-    const viewport=$("#mapViewport");
-    if(viewport){UI.mapScrollLeft=viewport.scrollLeft;UI.mapScrollTop=viewport.scrollTop;}
+    const top=$(".lens-window-body")?.scrollTop||0;
     $("#boardBody").innerHTML = templates.boardHTML(); $("#boardFoot").innerHTML = templates.boardFoot();
-    const nextViewport=$("#mapViewport");
-    if(nextViewport){nextViewport.scrollLeft=UI.mapScrollLeft||0;nextViewport.scrollTop=UI.mapScrollTop||0;}
+    const body=$(".lens-window-body");
+    if(body)body.scrollTop=top;
     return boardEl;
   }
   function makeCallout(info, more) {

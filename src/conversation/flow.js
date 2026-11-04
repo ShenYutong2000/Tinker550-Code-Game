@@ -1,10 +1,11 @@
-import { COLS, COLMAP, CHAR_COL, MODES } from "../design/catalog.js";
+import { COLS, COLMAP, MODES } from "../design/catalog.js";
 import { sing, bestMatch, parseHero, parseAction } from "../design/parse.js";
 import { optionsFor, questionFor, STEMS, COL_WORDS } from "../design/options.js";
+import { analyzeDescription, readMechanism } from "../design/analyze.js";
 import { projectCharacters, isBuilt, buildProjectSpec, projectContext, updateAutomaticName } from "../state/project.js";
 import { saveBotName } from "../state/storage.js";
 import { createVersionJournal, savePlaytestAssessment } from "../state/journal.js";
-import { ensureStickerNode, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
+import { ensureStickerNode, linkMechanisms, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
 import { esc, GUIDE } from "../ui/templates.js";
 
 export function createConversation({ getProject, UI, renderer, render, renderBoard, renderPane, renderTabs, getBoardEl, autosave, game, botName, sheet, reduced }) {
@@ -50,30 +51,32 @@ function renderLive(animate){
 
 
 let onboardingOpen=false;
+function closeLens(){UI.lens=null;UI.linking=false;UI.linkFrom=null;UI.editing=null;}
 function guideTarget(key){
   if(key==="star")return document.querySelector(".pick");
   if(key==="predict")return document.querySelector(".gen-pick");
   if(key==="iterate"){const m=[...document.querySelectorAll("#msgs .msg.sprout")];return m[m.length-1]||null;}
   if(key==="boardintro")return document.querySelector("#boardColumn .column-head");
   if(!getBoardEl())return null;
-  if(key==="howto")return getBoardEl().querySelector(".sticky.new")||getBoardEl().querySelector(".sticky")||getBoardEl().querySelector(".map-node");
+  if(key==="howto")return getBoardEl().querySelector(".lens-tile.has-new")||getBoardEl().querySelector(".lens-tile.used");
   if(key==="gen")return getBoardEl().querySelector("#boardFoot .btn");
   return getBoardEl().querySelector(`[data-col="${key}"]`);
 }
 function startTour(){
   const lit=new Set(P.stickers.map(s=>s.col));
-  UI.onboardQ=[...(P.stickers.length?["howto"]:[]),...["character",...COLS.map(c=>c.key)].filter(k=>lit.has(k)),"gen"];UI.touring=true;runOnboarding();
+  UI.onboardQ=[...(P.stickers.length?["howto"]:[]),...COLS.map(c=>c.key).filter(k=>lit.has(k)),"gen"];UI.touring=true;runOnboarding();
 }
 function runOnboarding(){
   if(onboardingOpen||!UI.onboardQ.length||pumping)return;
   const key=UI.onboardQ[0];
-  const el=guideTarget(key);
+  let el=guideTarget(key);
   if(!el){if(key==="star"||key==="predict"||!getBoardEl())return;UI.onboardQ.shift();return runOnboarding();}
+  if(UI.lens&&el.closest(".board-column")){closeLens();renderer.renderBoard();el=guideTarget(key);if(!el)return;}   // board guides need the element window out of the way
   onboardingOpen=true;
-  const info=GUIDE[key]||(key==="character"?CHAR_COL:COLMAP[key]);
+  const info=GUIDE[key]||COLMAP[key];
   const inSheet=el.closest(".board-column");
   let block,spot;
-  const par=inSheet?el.parentElement.closest(".map-node,.map-category-tray,.board-foot"):null;
+  const par=inSheet?el.parentElement.closest(".board-foot"):null;
   if(inSheet){inSheet.classList.add("focusing");el.classList.add("focused");if(par)par.classList.add("focus-parent");}
   else{block=document.createElement("div");block.className="spot-block";spot=document.createElement("div");spot.className="spot";document.body.append(block,spot);}
   el.scrollIntoView({block:"center",behavior:"smooth"});
@@ -115,27 +118,52 @@ function toConfirm(msg){say(msg);P.phase="confirm";
   if(!P.seen.includes("gen")&&!UI.onboardQ.includes("gen"))UI.onboardQ.push("gen");
   if(innerWidth<=767)UI.tab="board";
   render();}
-function startGame(who,act){
+function startGame(who,act,idea,told){
   const h=parseHero(who),a=parseAction(act);
-  say(`I want to make a game about <b>${esc(who)}</b> <b>${esc(act)}</b>`,"kid");
+  if(!told)say(`I want to make a game about <b>${esc(who)}</b> <b>${esc(act)}</b>`,"kid");
   const cs=addSticker("character",h.e+" "+h.n,"The hero. It shows up on the canvas",{char:{e:h.e,n:h.n}});
   P.activeChar=cs.id;
   addSticker("objectives","“"+act+"”",MODES[a.mode].obj(a.item.n),{mode:a.mode,item:a.item});
+  const {added,linked}=addIdeaMechanisms(idea);
   autoName();
-  say("Great idea! I turned it into two red notes: one for the character, one for the action.");
-  toConfirm("Red means “not confirmed yet”. I'll open the board. Tap a note to turn it yellow. Only yellow notes count!");
+  if(!added.length)say("Great idea! I turned it into two red notes: one for the character, one for the action.");
+  else{
+    const used=new Set(["character","objectives",...added.map(st=>st.col)]),names=COLS.filter(c=>used.has(c.key)).map(c=>"<b>"+c.en+"</b>");
+    say(`Great idea! I broke it into <b>${added.length+2} mechanisms</b> across ${names.length} elements: ${names.join(", ")}.`+(linked?` I linked ${linked} “when → then” ${linked>1?"pairs":"pair"} too.`:""));
+  }
+  const unsorted=idea?idea.unsorted:[];
+  if(unsorted.length)say(`I wasn't sure where ${unsorted.length>1?"these go":"this goes"}, so I left ${unsorted.length>1?"them":"it"} out for now: ${unsorted.map(u=>"“"+esc(u)+"”").join(", ")}. You can add ${unsorted.length>1?"them":"it"} later.`);
+  toConfirm(added.length?"Red means “not confirmed yet”. I'll open the board. Open each element with a red badge and tap its notes to turn them yellow. Only yellow notes count!"
+    :"Red means “not confirmed yet”. I'll open the board. Open <b>CHARACTERS</b> and <b>OBJECTIVES</b>, then tap each red note to turn it yellow. Only yellow notes count!");
+}
+/* the extra mechanisms from a description become red notes in their elements, keeping any "when → then" links */
+function addIdeaMechanisms(idea){
+  const added=[];let linked=0;
+  if(!idea)return {added,linked};
+  for(const m of idea.mechanisms){const r=readMechanism(m,ctx());added.push(addSticker(m.col,r.text,r.sub,r.effect));}
+  for(const [from,to] of idea.links)if(linkMechanisms(P,added[from].id,added[to].id)==="linked")linked++;
+  return {added,linked};
 }
 function doOpening(){
   const who=$("#inWho").value.trim(),act=$("#inDo").value.trim();
   if(!who||!act){say(who?"What is it doing? Write an action, like “catching stars”.":"First, tell me who the hero is, like “a cat”.");render();return;}
-  startGame(who,act);
+  const idea=UI.idea;UI.idea=null;
+  startGame(who,act,idea);
 }
-function openingFromText(t){
-  const low=t.toLowerCase();let cut=-1;
-  for(const m of Object.values(MODES))for(const k of m.k){const r=/^[a-z]/.test(k)?low.search(new RegExp("\\b"+k)):low.indexOf(k),i=r;if(i>0&&(cut<0||i<cut))cut=i;}
-  if(cut<0){say(esc(t),"kid");say("Sounds fun! Can you tell me in two parts? Who is the hero, and what is it doing?");render();return;}
-  const who=t.slice(0,cut).trim().replace(/\s+(is|are|who is|that is|who|that)$/i,"").trim()||t.slice(0,cut).trim();
-  startGame(who,t.slice(cut).trim());
+/* a free description: pull out the hero, the action and the extra mechanisms, then ask only for what is missing */
+function describe(t){
+  t=t.trim();
+  if(!t){say("Write a few sentences about your game first, or start with <b>who</b> and <b>doing what</b> below.");render();return;}
+  const idea=analyzeDescription(t);UI.ideaText="";
+  if(idea.who&&idea.act&&!idea.mechanisms.length&&!idea.unsorted.length){startGame(idea.who,idea.act);return;}
+  say(esc(t),"kid");
+  if(idea.who&&idea.act){startGame(idea.who,idea.act,idea,true);return;}
+  UI.idea=idea;
+  const more=idea.mechanisms.length?" Then I'll add the rest of your idea.":"";
+  say((!idea.who&&!idea.act?"Sounds fun! Can you tell me two things below? Who is the hero, and what is it doing?"
+    :idea.who?`I love it! What is the ${esc(parseHero(idea.who).n)} doing? Write it below, like “catching stars”.`
+    :"I love it! Who is the hero? Write it below, like “a cat”.")+more);
+  render();
 }
 function doNewChar(name){
   if(!name){say("What's the new character called?");render();return;}
@@ -148,7 +176,7 @@ function confirmSticker(id){
   const s=P.stickers.find(x=>x.id===id);if(!s||s.status!=="new")return;
   s.status="ok";s.pop=true;
   setStickerNodeStatus(P,id,"confirmed");
-  if(!P.stickers.some(x=>x.status==="new")){say(P.versions.length?"All confirmed! Tap “Make my game!” to see your new rules in action.":"Both confirmed! Now you can make your game.");}
+  if(!P.stickers.some(x=>x.status==="new")){say(P.versions.length?"All confirmed! Tap “Make my game!” to see your new rules in action.":(P.stickers.length===2?"Both":"All")+" confirmed! Now you can make your game.");}
   render();
 }
 /* a sticker can be rewritten before or after confirming; rewriting turns it red again */
@@ -204,7 +232,7 @@ function pickOption(i){
   setComposer("");
   say(esc(c.stem)+esc(o.t.replace(/^.*?: /,"")),"kid");
   addSticker(c.col,o.t,null,o.e);
-  toConfirm("I added a red note. Once you confirm it, you can make a new version.");
+  toConfirm(`I added a red note to <b>${COLMAP[c.col].en}</b>. Once you confirm it, you can make a new version.`);
 }
 function matchFree(t,quiet){
   const c=UI.choice,body=t.startsWith(c.stem)?t.slice(c.stem.length):t;
@@ -233,7 +261,7 @@ function nameBot(t){
 function send(){
   const ta=$("#composer"),t=ta.value.trim();if(!t||ta.disabled)return;
   if(P.phase==="naming"){setComposer("");nameBot(t);}
-  else if(P.phase==="opening"){setComposer("");openingFromText(t);}
+  else if(P.phase==="opening"){setComposer("");describe(t);}
   else if(P.phase==="newchar"){setComposer("");doNewChar(t);}
   else if(P.phase==="choice"){if(t===UI.choice.stem.trim())return;setComposer("");matchFree(t);}
   else if(P.phase==="playtest"){setComposer("");feelReply(t);}
@@ -444,11 +472,19 @@ function renameBot(){
 }
 
 function beginAddCharacter(){
-  UI.menuOpen=false;if(P.phase==="generating")return;
+  if(P.phase==="generating")return;
+  closeLens();
   renderBoard();
   say("I want to add another character","kid");
   say("OK! Who is the new character?");
   P.phase="newchar";UI.tab="create";render();$("#composer").focus();
+}
+/* "＋ Add a mechanism" in an element window asks the same question as picking that element after playtesting */
+function addMechanism(col){
+  if(pumping||!["directions","concept","choice"].includes(P.phase)){
+    say(P.versions.length?"Let's finish this round first. Then you can add more to it.":"Let's make your first version first. Then you can add more mechanisms.");render();return;}
+  closeLens();
+  UI.tab="create";UI.ownText="";UI.sel=col;P.phase="directions";pickGo();
 }
 function cancelChoice(){
   setComposer("");
@@ -467,11 +503,11 @@ function resetProject(project){
   showTyping(false);
 }
 return {
-  say, renderLive, runOnboarding, startTour, doOpening, send, autosize,
+  say, renderLive, runOnboarding, startTour, doOpening, describe, send, autosize,
   confirmSticker, saveEdit, delSticker, pickOption, submitGuess,
   generate, finishGen, pickGo, conceptDesign, conceptOther, openPane,
   clearAsk, directions, editableText, setComposer, greet, renameBot,
-  beginAddCharacter, cancelChoice, resetProject,
+  beginAddCharacter, addMechanism, cancelChoice, resetProject,
   isPumping:()=>pumping, isOnboardingOpen:()=>onboardingOpen
 };
 }

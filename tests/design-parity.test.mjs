@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
-import { COLS, COLMAP, CHAR_COL, HEROES, ITEMS, MODES } from '../src/design/catalog.js';
+import { COLS, COLMAP, HEROES, ITEMS, MODES } from '../src/design/catalog.js';
 import { bestMatch, cap, parseAction, parseHero, sing } from '../src/design/parse.js';
 import { COL_WORDS, optionsFor, questionFor, STEMS, WHY } from '../src/design/options.js';
 
@@ -19,8 +19,11 @@ const original = sandbox.reference;
 const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
 
 test('design catalog retains every label, keyword, and suggestion', () => {
-  for (const key of ['COLS', 'COLMAP', 'CHAR_COL', 'HEROES', 'ITEMS', 'WHY', 'COL_WORDS']) {
-    same({ COLS, COLMAP, CHAR_COL, HEROES, ITEMS, WHY, COL_WORDS }[key], original[key]);
+  const lenses = COLS.filter(({ key }) => key !== 'character');
+  same(lenses, original.COLS);
+  for (const { key } of original.COLS) same(COLMAP[key], original.COLMAP[key]);
+  for (const key of ['HEROES', 'ITEMS', 'WHY', 'COL_WORDS']) {
+    same({ HEROES, ITEMS, WHY, COL_WORDS }[key], original[key]);
   }
   for (const mode of Object.keys(MODES)) {
     same(MODES[mode].k, original.MODES[mode].k);
@@ -29,6 +32,15 @@ test('design catalog retains every label, keyword, and suggestion', () => {
       assert.equal(MODES[mode].obj(item), original.MODES[mode].obj(item));
     }
   }
+});
+
+test('characters are the first of nine design lenses and keep the original hero guidance', () => {
+  assert.equal(COLS.length, 9);
+  assert.equal(COLS[0], COLMAP.character);
+  const { en, zh, ...guidance } = COLMAP.character;
+  const { en: _en, zh: _zh, ...originalGuidance } = original.CHAR_COL;
+  assert.equal(en, 'CHARACTERS');
+  same(guidance, originalGuidance);
 });
 
 test('character and action inputs parse exactly as in the original', () => {
@@ -43,7 +55,7 @@ test('character and action inputs parse exactly as in the original', () => {
 });
 
 test('all mode and design-column choices match the original', () => {
-  const columns = COLS.map(({ key }) => key);
+  const columns = COLS.map(({ key }) => key).filter(key => key !== 'character');
   for (const [mode, action] of Object.entries({ catch: 'catching stars', dodge: 'dodging meteors', jump: 'jumping over cacti', shoot: 'popping balloons', roam: 'finding gems' })) {
     const context = { hero: parseHero('a cat'), ...parseAction(action) };
     assert.equal(context.mode, mode);

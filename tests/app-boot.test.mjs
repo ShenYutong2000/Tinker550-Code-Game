@@ -47,8 +47,8 @@ test('the modular entry boots and binds its input handlers', async () => {
   const script = builtHTML.match(/<script type="module"[^>]+src="([^"]+)"/)[1];
   await import(new URL(script, builtPage).href);
   assert.match(elements.get('#live').innerHTML, /is typing/);
-  assert.match(elements.get('#boardBody').innerHTML, /map-toolbar/);
-  assert.match(elements.get('#boardBody').innerHTML, /map-viewport/);
+  assert.equal(elements.get('#boardBody').innerHTML.match(/class="lens-tile /g).length, 9);
+  assert.match(elements.get('#boardBody').innerHTML, /Nothing yet/);
   assert.match(elements.get('#boardFoot').innerHTML, /Make my game/);
   assert.equal(elements.get('#composer').placeholder, 'Or just type: a cat catching stars');
   assert.match(elements.get('#journalEntries').innerHTML, /design choices and playtest discoveries/);
@@ -81,6 +81,15 @@ test('the modular entry boots and binds its input handlers', async () => {
   };
   click('[data-open]', { open: saved.id });
   assert.equal(elements.get('#paneVer').textContent, 'v1');
+  const board = elements.get('#boardBody').innerHTML;
+  const tiles = [...board.matchAll(/class="lens-tile ([\w ]*?)" data-col="(\w+)"/g)];
+  assert.deepEqual(tiles.map(tile => tile[2]), ['character', 'players', 'objectives', 'procedures', 'rules', 'resources', 'conflict', 'boundaries', 'outcome']);
+  assert.match(tiles[0][1], /used/);
+  assert.match(board, /1 character</);
+  assert.doesNotMatch(board, /sticky|lens-window|map-node/);
+  click('[data-lens]', { lens: 'objectives' });
+  assert.match(elements.get('#boardBody').innerHTML, /<h2 id="lensTitle">OBJECTIVES<\/h2>/);
+  assert.match(elements.get('#boardBody').innerHTML, /catching stars/);
   assert.match(elements.get('#journalEntries').innerHTML, /catching stars/);
   assert.match(elements.get('#journalEntries').innerHTML, /you get 1 point/);
   assert.match(elements.get('#assessment').innerHTML, /you get 1 point/);

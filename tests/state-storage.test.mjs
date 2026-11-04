@@ -4,7 +4,6 @@ import { test } from 'node:test';
 import { buildProjectSpec, createProject, createUIState, projectContext, restoreProject, updateAutomaticName } from '../src/state/project.js';
 import { BOT_KEY, PROJECTS_KEY, clearSavedData, readBotName, readProjects, resetFromLocation, saveBotName, saveProject } from '../src/state/storage.js';
 import { createVersionJournal, getAssessmentView, getJournalEntries, savePlaytestAssessment } from '../src/state/journal.js';
-import { createIdeaNode } from '../src/state/design-map.js';
 
 function memoryStorage(initial={}){
   const data=new Map(Object.entries(initial));
@@ -39,9 +38,9 @@ test('existing v6 JSON stays unchanged in storage and restores with a migrated d
   assert.deepEqual(legacyFields,legacy);
   assert.deepEqual(designMap,{
     nodes:[
-      {id:'card-s1',stickerId:'s1',title:'🐱 cat',x:0,y:0,status:'built'},
-      {id:'card-s2',stickerId:'s2',title:'“catching stars”',x:260,y:0,status:'built'},
-      {id:'card-s3',stickerId:'s3',title:'touch a star: it disappears, +1 point',x:520,y:0,status:'idea'}
+      {id:'card-s1',stickerId:'s1',title:'🐱 cat',status:'built'},
+      {id:'card-s2',stickerId:'s2',title:'“catching stars”',status:'built'},
+      {id:'card-s3',stickerId:'s3',title:'touch a star: it disappears, +1 point',status:'idea'}
     ],
     edges:[]
   });
@@ -76,17 +75,15 @@ test('new projects and older incomplete v6 entries keep their defaults without s
   assert.equal(unnamed.name,'Cat: Catching Stars');
 });
 
-test('a project containing only design notes can be saved and restored', () => {
+test('free planning notes from older saves survive a save and restore untouched', () => {
   const storage=memoryStorage();
   const project=createProject('Robo');
   project.name='Puzzle ideas';
-  const note=createIdeaNode(project,'Find the hidden key',320,180,'sky');
+  const note={id:'note-old',title:'Find the hidden key',x:320,y:180,color:'sky',status:'idea'};
+  project.designMap.nodes.push(note);
   assert.equal(saveProject(project,storage),true);
   const restored=restoreProject(readProjects(storage)[0],'Robo');
-  assert.equal(restored.designMap.nodes[0].title,'Find the hidden key');
-  assert.equal(restored.designMap.nodes[0].x,320);
-  assert.equal(restored.designMap.nodes[0].y,180);
-  assert.equal(restored.designMap.nodes[0].id,note.id);
+  assert.deepEqual(restored.designMap.nodes,[note]);
 });
 
 test('saving keeps the v6 key, JSON format, newest-first order and 20-project limit', () => {
