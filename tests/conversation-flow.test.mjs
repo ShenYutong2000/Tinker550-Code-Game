@@ -15,8 +15,9 @@ function waitFor(predicate, timeout = 10000) {
   });
 }
 
-test('a child can create and revise a game through two versions', async () => {
-  let project = createProject('Robo');
+/* a stand-in page: just enough DOM for the conversation to run without a browser */
+async function withConversation(run) {
+  const state = { project: createProject('Robo') };
   const UI = createUIState(1440);
   const elements = new Map();
   for (const selector of ['#inWho', '#inDo', '#composer', '#msgs', '.composer']) {
@@ -26,8 +27,6 @@ test('a child can create and revise a game through two versions', async () => {
       appendChild() {}, focus() {}, setSelectionRange() {},
     });
   }
-  elements.get('#inWho').value = 'a cat';
-  elements.get('#inDo').value = 'catching stars';
   const originalDocument = globalThis.document;
   const originalInnerWidth = globalThis.innerWidth;
   globalThis.innerWidth = 1440;
@@ -44,11 +43,21 @@ test('a child can create and revise a game through two versions', async () => {
   const noop = () => {};
   try {
     const flow = createConversation({
-      getProject: () => project, UI, renderer, render: noop, renderBoard: noop,
+      getProject: () => state.project, UI, renderer, render: noop, renderBoard: noop,
       renderPane: noop, renderTabs: noop, getBoardEl: () => null,
-      autosave: noop, game, botName: () => project.botName, sheet: noop, reduced: true,
+      autosave: noop, game, botName: () => state.project.botName, sheet: noop, reduced: true,
     });
+    await run({ flow, UI, elements, loadedSpecs, state });
+  } finally {
+    globalThis.document = originalDocument;
+    if(originalInnerWidth===undefined)delete globalThis.innerWidth;else globalThis.innerWidth=originalInnerWidth;
+  }
+}
 
+test('a child can create and revise a game through two versions', () => withConversation(async ({ flow, UI, elements, loadedSpecs, state }) => {
+    let project = state.project;
+    elements.get('#inWho').value = 'a cat';
+    elements.get('#inDo').value = 'catching stars';
     flow.doOpening();
     assert.equal(project.stickers.length, 2);
     project.stickers.forEach(sticker => flow.confirmSticker(sticker.id));
@@ -90,13 +99,47 @@ test('a child can create and revise a game through two versions', async () => {
     await waitFor(() => !flow.isPumping());
     flow.say('old project message');
     const nextProject = createProject('Robo');
-    project = nextProject;
+    state.project = nextProject;
     flow.resetProject(nextProject);
     await new Promise(resolve => setTimeout(resolve, 300));
     assert.deepEqual(nextProject.chat, []);
     assert.equal(flow.isPumping(), false);
-  } finally {
-    globalThis.document = originalDocument;
-    if(originalInnerWidth===undefined)delete globalThis.innerWidth;else globalThis.innerWidth=originalInnerWidth;
-  }
-});
+}));
+
+test('a description is broken into notes across elements, asking only for what is missing', () => withConversation(async ({ flow, UI, elements, state }) => {
+  const project = state.project;
+  flow.describe('My hero is a penguin. When bombs fall, the fish come faster. You have 3 lives. The sky is purple.');
+  assert.equal(project.stickers.length, 0);
+  assert.equal(UI.idea.who, 'penguin');
+  assert.equal(UI.idea.act, null);
+
+  elements.get('#inWho').value = UI.idea.who;
+  elements.get('#inDo').value = 'catching fish';
+  flow.doOpening();
+  assert.equal(UI.idea, null);
+  assert.deepEqual(project.stickers.map(sticker => [sticker.col, sticker.status]), [
+    ['character', 'new'], ['objectives', 'new'], ['conflict', 'new'], ['conflict', 'new'], ['resources', 'new'],
+  ]);
+  assert.deepEqual(project.stickers[0].effect, { char: { e: '🐧', n: 'penguin' } });
+  assert.deepEqual(project.stickers[4].effect, { lives: 3 });
+  assert.equal(project.designMap.edges.length, 1);
+  assert.equal(project.phase, 'confirm');
+
+  await waitFor(() => !flow.isPumping());
+  const said = project.chat.map(message => message.html).join('\n');
+  assert.match(said, /5 mechanisms<\/b> across 4 elements: <b>CHARACTERS<\/b>, <b>OBJECTIVES<\/b>, <b>RESOURCES<\/b>, <b>CONFLICT<\/b>/);
+  assert.match(said, /linked 1 “when → then” pair/);
+  assert.match(said, /“The sky is purple”/);
+
+  project.stickers.forEach(sticker => flow.confirmSticker(sticker.id));
+  flow.generate();
+  UI.gen.done = true;
+  UI.gen.guess = 'the penguin catches fish';
+  flow.finishGen();
+  assert.equal(project.versions[0].spec.lives, 3);
+  assert.equal(project.versions[0].spec.hazard, '💣');
+  await waitFor(() => !flow.isPumping());
+  state.project = createProject('Robo');
+  flow.resetProject(state.project);
+  await new Promise(resolve => setTimeout(resolve, 300));
+}));

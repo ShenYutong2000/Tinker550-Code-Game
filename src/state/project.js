@@ -11,12 +11,10 @@ function migrateDesignMap(project, savedMap){
   const stickers=Array.isArray(project.stickers)?project.stickers:[];
   const built=new Set(Array.isArray(project.lastBuilt)?project.lastBuilt:[]);
   return {
-    nodes:stickers.map((sticker,index)=>({
+    nodes:stickers.map(sticker=>({
       id:"card-"+sticker.id,
       stickerId:sticker.id,
       title:sticker.text,
-      x:(index%3)*260,
-      y:Math.floor(index/3)*190,
       status:sticker.status==="new"?"idea":built.has(sticker.id)?"built":"confirmed"
     })),
     edges:[]
@@ -33,7 +31,7 @@ export function restoreProject(saved, botName){
 }
 
 export function createUIState(viewportWidth){
-  return {expanded:new Set(),editing:null,menuOpen:false,onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false,mapZoom:.8,connectFrom:null};
+  return {expanded:new Set(),editing:null,lens:null,linking:false,linkFrom:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
 }
 
 export const projectCharacters=project=>project.stickers.filter(sticker=>sticker.col==="character");
