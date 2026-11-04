@@ -29,6 +29,8 @@ test('a child can create and revise a game through two versions', async () => {
   elements.get('#inWho').value = 'a cat';
   elements.get('#inDo').value = 'catching stars';
   const originalDocument = globalThis.document;
+  const originalInnerWidth = globalThis.innerWidth;
+  globalThis.innerWidth = 1440;
   globalThis.document = {
     querySelector: selector => elements.get(selector) || null,
     querySelectorAll: () => [],
@@ -37,12 +39,13 @@ test('a child can create and revise a game through two versions', async () => {
     msgNode: message => message,
     scrollDown() {}, showTyping() {}, renderLive() {}, showAsk() {},
   };
-  const game = { load() {}, clear() {} };
+  const loadedSpecs = [];
+  const game = { load(spec) { loadedSpecs.push(spec); }, clear() {} };
   const noop = () => {};
   try {
     const flow = createConversation({
       getProject: () => project, UI, renderer, render: noop, renderBoard: noop,
-      renderSide: noop, renderPane: noop, renderTabs: noop, getBoardEl: () => null,
+      renderPane: noop, renderTabs: noop, getBoardEl: () => null,
       autosave: noop, game, botName: () => project.botName, sheet: noop, reduced: true,
     });
 
@@ -56,13 +59,17 @@ test('a child can create and revise a game through two versions', async () => {
     flow.finishGen();
     assert.equal(project.versions.length, 1);
     assert.equal(project.phase, 'playtest');
+    assert.equal(loadedSpecs.length, 1);
+    assert.equal(project.versions[0].journal.steps.length, 2);
 
     await waitFor(() => !flow.isPumping());
     project.seen.push('iterate', 'star');
     elements.get('#composer').value = 'nothing happened';
     flow.send();
-    assert.equal(project.phase, 'directions');
     await waitFor(() => !flow.isPumping());
+    assert.equal(project.versions[0].assessment.response, 'nothing happened');
+    assert.equal(project.versions[0].assessment.alignment, 'different');
+    assert.equal(project.phase, 'directions');
 
     UI.sel = flow.directions()[0].col;
     flow.pickGo();
@@ -77,6 +84,7 @@ test('a child can create and revise a game through two versions', async () => {
     flow.finishGen();
     assert.equal(project.versions.length, 2);
     assert.equal(project.versions[1].n, 2);
+    assert.equal(loadedSpecs.length, 2);
     assert.equal(project.phase, 'playtest');
 
     await waitFor(() => !flow.isPumping());
@@ -89,5 +97,6 @@ test('a child can create and revise a game through two versions', async () => {
     assert.equal(flow.isPumping(), false);
   } finally {
     globalThis.document = originalDocument;
+    if(originalInnerWidth===undefined)delete globalThis.innerWidth;else globalThis.innerWidth=originalInnerWidth;
   }
 });

@@ -1,4 +1,6 @@
-import { COLS } from "../design/catalog.js";
+import { COLS, COLMAP } from "../design/catalog.js";
+import { alignmentLabel } from "../state/journal.js";
+import { MAP_HEIGHT, MAP_NOTE_WIDTH, MAP_WIDTH } from "../state/design-map.js";
 
 export const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 export const ROBOT=`<svg class="avatar" viewBox="0 0 120 120" aria-hidden="true"><rect x="34" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="68" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="18" y="22" width="84" height="80" rx="14" fill="#FFD166"/><rect x="18" y="90" width="84" height="12" rx="6" fill="#D9A13A"/><rect x="26" y="30" width="22" height="8" rx="4" fill="#FFE6A6"/><g class="eye"><rect x="35" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="70" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="39" y="51" width="5" height="5" fill="#fff"/><rect x="74" y="51" width="5" height="5" fill="#fff"/></g><ellipse cx="30" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><ellipse cx="90" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><path d="M49 74 Q60 85 71 74" stroke="#15102A" stroke-width="6" fill="none" stroke-linecap="round"/></svg>`;
@@ -14,16 +16,39 @@ export const GUIDE={
   gen:{lab:"Last step",ic:"▶️",zh:"All yellow? Make your game!",tip:"When every note is yellow, tap this button and your game shows up on the right."},
   predict:{lab:"Make a guess",ic:"🔮",zh:"What will the game do? You guess!",tip:"<b>Tap one</b> you think will happen, or <b>write</b> your own guess below.<br>Then tap \"I think so!\".<br>When you play, see if you were right!"},
   boardintro:{lab:"Design board",ic:"🗺️",zh:"This is your game's design map",tip:"Every idea you have becomes a sticky note here."},
-  mapentry:{mini:true,zh:"Come back here any time"},
   iterate:{lab:"A designer's secret",ic:"🔁",zh:"Different? That's totally normal!",tip:"Every game designer's first version looks different from what they imagined.<br>This is how they all make games: <b>play → spot what's different → change it → play again</b>.<br>We'll do it round by round too, until it's the game you want."},
   star:{lab:"What's next",ic:"🧭",zh:"Three ways to pick",tip:"<b>① Tap a card</b> to pick something to change.<br><b>② Tap ☆</b> to save an idea in \"My game ideas\" for later.<br><b>③ Write</b> your own idea below.<br>Then tap \"This one!\" to keep going."}
 };
-export function createTemplates({ getProject, UI, botName, directions, chars, built, editableText, allProjects }) {
+export function createTemplates({ getProject, UI, botName, directions, chars, built, editableText, allProjects, journalEntries, assessmentView }) {
 function messageHTML(m){return m.who==="kid"?`<div class="body">${m.html}</div>`:`${ROBOT}<div class="body">${m.html}</div>`;}
 function typingHTML(){return `<div class="msg" style="margin-left:-42px">${ROBOT}<div class="typing" aria-label="${esc(botName())} is typing"><i></i><i></i><i></i><span class="who">${esc(botName())} is typing…</span></div></div>`;}
 const COMPOSER_PLACEHOLDER={naming:"Give your robot buddy a name…",opening:"Or just type: a cat catching stars",newchar:"Who is the new character?",choice:"Finish this sentence…",confirm:"First, confirm the red notes on the board…",generating:"Pick one above, or write your guess…",playtest:"What did you see?",directions:"Or write your own idea here…",concept:"Or write a different idea…"};
 function composerPlaceholder(phase){return COMPOSER_PLACEHOLDER[phase]||"";}
-function boardShellHTML(){return `<div class="sheet" role="dialog" aria-modal="true" aria-label="Design board"><div class="sheet-h"><span class="t">Design board</span><span class="s">Fullerton's 8 formal elements</span><button class="tbtn tour" data-act="tour">🧭 Show me around again</button><button class="ibtn" data-act="closeboard" aria-label="Close board">${X_ICON}</button></div><div class="sheet-b" id="boardBody"></div><div class="board-foot" id="boardFoot"></div></div>`;}
+function journalHTML(){
+  const entries=journalEntries();
+  if(!entries.length)return `<div class="journal-empty">Your design choices and playtest discoveries will be collected here.</div>`;
+  return entries.map(entry=>{
+    const inProgress=entry.version===null;
+    const versionLabel=inProgress?"In progress":"v"+entry.version;
+    const steps=entry.steps.map(step=>`<li>${esc(step.text)}${step.category?`<span class="journal-tag">${esc(step.category==="character"?"CHARACTER":COLMAP[step.category]?.en||step.category)}</span>`:""}</li>`).join("");
+    const check=entry.assessment;
+    return `<article class="journal-entry ${inProgress?"in-progress":""}"><div class="journal-entry-head"><strong>${esc(versionLabel)}</strong><span>${inProgress?"Planning":"Built"}${check?" · Played":""}</span></div><ul>${steps}</ul>${entry.expected?`<p class="journal-detail"><b>I expected</b> ${esc(entry.expected)}</p>`:""}${check?`<p class="journal-detail"><b>I noticed</b> ${esc(check.response)}</p><span class="journal-result ${esc(check.alignment)}">${esc(alignmentLabel(check.alignment))}</span>`:""}</article>`;
+  }).join("");
+}
+function assessmentHTML(){
+  const view=assessmentView();
+  if(view.state==="empty")return `<h2>How did this step go?</h2><p>After you make a version, you and your buddy can compare what you expected with what happened.</p>`;
+  if(view.state==="complete"){
+    const a=view.assessment;
+    const focus=a.discovery?COLMAP[a.discovery]?.zh||a.discovery:null;
+    return `<div class="assessment-state"><span class="assessment-kicker">PLAYTEST NOTES · v${esc(getProject().versions.at(-1).n)}</span><h2>${esc(alignmentLabel(a.alignment))}</h2>${view.expected?`<p class="assessment-line"><b>I expected</b>${esc(view.expected)}</p>`:""}<p class="assessment-line"><b>I noticed</b>${esc(a.response)}</p>${focus?`<span class="journal-tag">Next to explore: ${esc(focus)}</span>`:""}</div>`;
+  }
+  const expectation=view.expected?`<p class="assessment-line"><b>I expected</b>${esc(view.expected)}</p>`:"";
+  const versionLabel=esc(getProject().versions.at(-1).n);
+  if(view.state==="question")return `<div class="assessment-state"><span class="assessment-kicker">YOUR TURN · v${versionLabel}</span><h2>Did it happen the way you expected?</h2>${expectation}<p>Tell your buddy what you noticed in the Design Journal chat.</p><button class="tbtn assessment-chat" data-act="assessment-chat">💬 Tell my buddy</button></div>`;
+  if(view.state==="playing")return `<div class="assessment-state"><span class="assessment-kicker">PLAYING · v${versionLabel}</span><h2>Try your game!</h2>${expectation}<p>Your buddy will ask what happened after you start playing.</p></div>`;
+  return `<div class="assessment-state"><span class="assessment-kicker">READY TO TEST · v${versionLabel}</span><h2>Check your idea in the game</h2>${expectation}<p>Play this version, then tell your buddy what you noticed.</p><button class="btn" data-act="openpane">▶ Play this version</button></div>`;
+}
 function paneLegendHTML(sp){
   const m=sp.mode,c=sp.control,two=sp.players===2,keys=[];
   if(c!=="mouse")keys.push(m==="roam"?`<span class="key">←↑↓→</span> move`:m==="jump"?`<span class="key">SPACE</span> jump`:`<span class="key">← →</span> move`);
@@ -43,7 +68,7 @@ function widgetHTML(){
       <div class="row"><button class="btn" data-act="opening">Got it!</button></div></div>`;
     case "newchar":return `${chipRow(["a dog","a penguin","an alien","a panda","a fox"],"composer","Try")}<div class="row"><button class="link" data-act="cancel">Never mind</button></div>`;
     case "choice":{const c=UI.choice;return `<div class="chips"><span class="lab">You could say</span>${c.options.map((o,i)=>`<button class="chip opt" data-pick="${i}">${o.pic} ${esc(o.t)}${c.predicted===i?'<span class="tag">your guess</span>':""}</button>`).join("")}</div><div class="row"><button class="link" data-act="cancel">Try something else</button></div>`;}
-    case "confirm":return newCount?`<div class="row"><button class="btn" data-act="board">🗺️ Open my board</button><span class="hint">${newCount} red ${newCount>1?"notes":"note"} waiting for you</span></div>`
+    case "confirm":return newCount?`<div class="row"><button class="btn" data-act="board">🗺️ View my board</button><span class="hint">${newCount} red ${newCount>1?"notes":"note"} waiting for you</span></div>`
       :`<div class="row"><button class="btn" data-act="generate">Make my game!</button><button class="btn soft" data-act="board">Look at the board</button></div>`;
     case "generating":{const g=UI.gen;if(!g)return "";const locked=g.guess!==undefined;
       return `<div class="card"><div class="shimmer ${g.done?"done":""}" aria-hidden="true"></div><div class="gen-status">${esc(g.status)}</div>
@@ -65,21 +90,20 @@ function widgetHTML(){
   }
   return "";
 }
-function sideHTML(){
+function projectsHTML(){
   const P=getProject();
-  const ok=P.stickers.filter(s=>s.status==="ok");
   const list=allProjects();
   return `
-    <button class="sbtn new" data-act="new"><span class="plus">+</span>New project</button>
-    <button class="sbtn" data-act="board"><span>🗺️</span>Design map<span class="badge">${ok.length}</span></button>
+    <div class="project-actions"><button class="sbtn new" data-act="new"><span class="plus">+</span>New project</button>
+    <button class="sbtn" data-act="restart">↺ Start over</button></div>
     <div class="bot-row">${ROBOT.replace('class="avatar"','class="avatar" style="width:22px;height:22px"')}<span>Buddy: <span class="nm">${esc(botName())}</span></span><button data-act="rename">Rename</button></div>
-    <div class="scroll">
+    <div class="project-list">
       <div class="sec">My projects</div>
       ${list.length?list.map(p=>{const cur=p.id===P.id,src=cur?P:p,h=(src.stickers||[]).find(s=>s.col==="character"),sv=src.saved||[],open=UI.expanded.has(p.id);
         return `<div class="proj-wrap ${cur?"on":""}"><div class="proj ${cur?"on":""}"><button class="tw" data-expand="${p.id}" aria-expanded="${open}" aria-label="${open?"Hide":"Show"} My game ideas">${open?"▾":"▸"}</button><button class="pn" data-open="${p.id}"><span class="em">${h?h.effect.char.e:"🧩"}</span><span class="n">${esc(src.name||"New game")}</span></button>${sv.length?`<span class="fav-ct" title="My game ideas">⭐${sv.length}</span>`:""}</div>
         ${open?`<div class="favs"><div class="favs-h">⭐ My game ideas</div>${sv.length?sv.map(s=>`<div class="saved-item"><button class="go" ${cur?`data-dir="${s.col}"`:`data-open="${p.id}"`}><span class="s">☆</span>${esc(s.q)}</button>${cur?`<button class="x" data-unstar="${s.col}" aria-label="Remove this idea">×</button>`:""}</div>`).join(""):`<div class="empty-note">Tap ☆ on one of ${esc(botName())}'s ideas to save it here for later.</div>`}</div>`:""}</div>`;}).join(""):`<div class="empty-note">No projects yet. Share your first idea and it will show up here.</div>`}
     </div>
-    <button class="sbtn restart" data-act="restart">↺ Start over</button>`;
+    `;
 }
 function stickerHTML(s){
   const nofx=s.status==="ok"&&!s.effect?`<span class="nofx">This prototype can't build this yet, so it stays here for now</span>`:"";
@@ -88,16 +112,27 @@ function stickerHTML(s){
   return `<div class="sticky ok ${s.pop?"pop":""}" style="--rot:${s.rot}">${esc(s.text)}${s.sub?`<span class="sub">${esc(s.sub)}</span>`:""}${nofx}<button class="ed ok-ed" data-edit="${s.id}" aria-label="Changed your mind? Rewrite this note" title="Changed your mind? Edit it">✏️</button></div>`;
 }
 function boardHTML(){
-  const P=getProject();
-  const cs=chars(),act=cs.find(c=>c.id===P.activeChar)||cs[0];
-  const menu=UI.menuOpen?`<div class="menu" role="menu">${cs.map(c=>`<button role="menuitem" data-char="${c.id}"><span class="em">${c.effect.char.e}</span>${esc(c.effect.char.n)}<span class="st">${act&&c.id===act.id?"Main Character":c.status==="new"?"Not confirmed":"Side character"}</span></button>`).join("")}<button role="menuitem" class="add" data-act="addchar"><span class="em">+</span>Add a new character</button></div>`:"";
-  let h=`<div class="entity" data-col="character"><div class="title"><span>MY CHARACTER</span>
-    <div class="picker"><button class="pick-btn" data-act="menu" aria-haspopup="menu" aria-expanded="${UI.menuOpen}"><span class="em">${act?act.effect.char.e:"❔"}</span><span>${act?esc(act.effect.char.n):"No character yet"}</span>${act?'<span class="role">(Main Character)</span>':""}<span>▾</span></button>${menu}</div></div>
-    <div class="ent-stickers">${cs.map(stickerHTML).join("")||`<div class="ghostboard">Your hero's notes go here</div>`}</div></div><div class="grid">`;
-  for(const c of COLS){const ss=P.stickers.filter(s=>s.col===c.key);
-    h+=ss.length?`<div class="col lit" data-col="${c.key}"><div class="col-h"><span class="ic">${c.ic}</span><span><span class="en">${c.en}</span><br><span class="zh">${c.zh}</span></span></div>${ss.map(stickerHTML).join("")}</div>`
-      :`<div class="col locked" data-col="${c.key}" aria-label="Locked"><div class="locked-t">(locked)</div></div>`;}
-  return h+`</div>`;
+  const P=getProject(), nodes=P.designMap.nodes||[];
+  const charsInGame=chars(), active=charsInGame.find(c=>c.id===P.activeChar)||charsInGame[0];
+  const zoom=Math.max(.35,Math.min(1.2,Number(UI.mapZoom)||.8));
+  const menu=UI.menuOpen?'<div class="menu" role="menu">'+charsInGame.map(c=>'<button role="menuitem" data-char="'+esc(c.id)+'"><span class="em">'+c.effect.char.e+'</span>'+esc(c.effect.char.n)+'<span class="st">'+(active&&c.id===active.id?"Main Character":c.status==="new"?"Not confirmed":"Side character")+'</span></button>').join("")+'<button role="menuitem" class="add" data-act="addchar"><span class="em">+</span>Add a new character</button></div>':"";
+  const cards=nodes.map(node=>{
+    const sticker=node.stickerId&&P.stickers.find(item=>item.id===node.stickerId);
+    const body=sticker?stickerHTML(sticker):'<div class="sticky map-idea-card"><textarea data-map-title="'+esc(node.id)+'" rows="4" aria-label="Sticky note text">'+esc(node.title||"")+'</textarea><div class="idea-card-foot"><span>Planning note · not in the game yet</span><button data-map-delete="'+esc(node.id)+'" aria-label="Remove note" title="Remove note">×</button></div></div>';
+    const state=sticker?(node.status==="built"?"IN GAME":node.status==="confirmed"?"CONFIRMED":"NEW IDEA"):"IDEA";
+    const category=sticker?COLMAP[sticker.col]:null;
+    return '<article class="map-node '+(sticker?"game-note":"idea-note")+(UI.connectFrom===node.id?" connecting":"")+'" data-map-color="'+esc(node.color||"sunshine")+'" data-map-node="'+esc(node.id)+'" style="left:'+Math.max(0,Number(node.x)||0)+'px;top:'+Math.max(0,Number(node.y)||0)+'px"><div class="map-node-head"><button class="map-drag-handle" data-map-drag="'+esc(node.id)+'" aria-label="Move note: '+esc(node.title||"Untitled idea")+'" title="Drag to move · use arrow keys to nudge">⠿</button><span>'+state+'</span>'+(category?'<span class="map-category">'+category.ic+' '+esc(category.en)+'</span>':"")+'</div>'+body+'</article>';
+  }).join("");
+  const edges=(P.designMap.edges||[]).map(edge=>{
+    const from=nodes.find(node=>node.id===edge.from),to=nodes.find(node=>node.id===edge.to);
+    if(!from||!to)return "";
+    const sx=(Number(from.x)||0)+MAP_NOTE_WIDTH/2,sy=(Number(from.y)||0)+78,tx=(Number(to.x)||0)+MAP_NOTE_WIDTH/2,ty=(Number(to.y)||0)+78,bend=Math.max(46,Math.abs(tx-sx)*.38);
+    return '<path class="map-edge" data-edge-id="'+esc(edge.id||edge.from+"-"+edge.to)+'" d="M '+sx+' '+sy+' C '+(sx+bend)+' '+sy+', '+(tx-bend)+' '+ty+', '+tx+' '+ty+'" marker-end="url(#mapArrow)"/>';
+  }).join("");
+  const picker='<div class="picker"><button class="pick-btn map-character" data-act="menu" aria-haspopup="menu" aria-expanded="'+UI.menuOpen+'"><span class="em">'+(active?active.effect.char.e:"❔")+'</span><span>'+(active?esc(active.effect.char.n):"Character")+'</span><span>▾</span></button>'+menu+'</div>';
+  const empty='<div class="map-empty"><span>🗺️</span><h2>Your idea map starts here</h2><p>Add a sticky note, write an idea, then drag notes to connect your game plan.</p><button class="map-tool primary" data-map-act="add-note">＋ Add your first note</button></div>';
+  const categories=COLS.map(category=>'<button class="map-lens '+(P.stickers.some(sticker=>sticker.col===category.key)?"used":"")+'" data-col="'+category.key+'" title="'+esc(category.tip)+'"><span>'+category.ic+'</span><span>'+esc(category.en)+'</span></button>').join("");
+  return '<div class="map-toolbar"><div class="map-tool-group"><button class="map-tool primary" data-map-act="add-note">＋ <span>Sticky note</span></button><button class="map-tool '+(UI.connectMode?"active":"")+'" data-map-act="connect" aria-pressed="'+!!UI.connectMode+'">↗ <span>'+(UI.connectFrom?"Choose next note":UI.connectMode?"Choose first note":"Connect steps")+'</span></button><span class="map-hint">Drag notes to plan · connect ideas in order</span></div><div class="map-tool-group map-zoom-controls">'+picker+'<label class="map-tool map-color-picker" title="Choose a sticky note color"><span>🎨</span><select id="mapNoteColor" aria-label="Sticky note color"><option value="sunshine">Sunshine</option><option value="coral">Coral</option><option value="mint">Mint</option><option value="sky">Sky</option><option value="lavender">Lavender</option></select></label><button class="map-tool icon-tool" data-map-act="zoom-out" aria-label="Zoom out" title="Zoom out">−</button><span class="map-zoom-value">'+Math.round(zoom*100)+'%</span><button class="map-tool icon-tool" data-map-act="zoom-in" aria-label="Zoom in" title="Zoom in">+</button><button class="map-tool" data-map-act="fit">▣ <span>Fit all</span></button></div></div><div class="map-viewport" id="mapViewport" aria-label="Design map canvas. Drag notes or drag empty space to move around"><div class="map-world-wrap" style="width:'+MAP_WIDTH*zoom+'px;height:'+MAP_HEIGHT*zoom+'px"><div class="map-world" id="mapWorld" style="width:'+MAP_WIDTH+'px;height:'+MAP_HEIGHT+'px;transform:scale('+zoom+')"><svg class="map-edges" viewBox="0 0 '+MAP_WIDTH+' '+MAP_HEIGHT+'" aria-hidden="true"><defs><marker id="mapArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>'+edges+'</svg>'+(cards||empty)+'</div></div></div><div class="map-category-tray" aria-label="Game design elements"><span class="map-category-title">DESIGN LENSES</span>'+categories+'</div>';
 }
 function boardFoot(){
   const P=getProject();
@@ -116,5 +151,5 @@ return `${ROBOT}<div><b>${gs?"You guessed “"+esc(gs)+"”. Did that happen?":"
 function sheetHTML(title, sub, body){
 return `<div class="sheet narrow" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-h"><span class="t">${title}</span><span class="s">${sub}</span><button class="ibtn" data-close aria-label="Close">${X_ICON}</button></div><div class="sheet-b">${body}</div></div>`;
 }
-return { messageHTML, typingHTML, composerPlaceholder, boardShellHTML, paneLegendHTML, widgetHTML, sideHTML, boardHTML, boardFoot, guideCalloutHTML, askHTML, sheetHTML };
+return { messageHTML, typingHTML, composerPlaceholder, journalHTML, assessmentHTML, paneLegendHTML, widgetHTML, projectsHTML, boardHTML, boardFoot, guideCalloutHTML, askHTML, sheetHTML };
 }

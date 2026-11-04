@@ -3,9 +3,11 @@ import { sing, bestMatch, parseHero, parseAction } from "../design/parse.js";
 import { optionsFor, questionFor, STEMS, COL_WORDS } from "../design/options.js";
 import { projectCharacters, isBuilt, buildProjectSpec, projectContext, updateAutomaticName } from "../state/project.js";
 import { saveBotName } from "../state/storage.js";
+import { createVersionJournal, savePlaytestAssessment } from "../state/journal.js";
+import { ensureStickerNode, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
 import { esc, GUIDE } from "../ui/templates.js";
 
-export function createConversation({ getProject, UI, renderer, render, renderBoard, renderSide, renderPane, renderTabs, getBoardEl, autosave, game, botName, sheet, reduced }) {
+export function createConversation({ getProject, UI, renderer, render, renderBoard, renderPane, renderTabs, getBoardEl, autosave, game, botName, sheet, reduced }) {
 const $=(s,r=document)=>r.querySelector(s);
 let P=getProject();
 let _id=Date.now()%100000; const uid=()=>"s"+(++_id);
@@ -43,19 +45,18 @@ function renderLive(animate){
   if(pumping)return;
   renderer.renderLive(animate);
   if(P.phase==="generating"&&UI.gen&&UI.gen.guess===undefined&&!P.seen.includes("predict")&&!UI.onboardQ.includes("predict")){UI.onboardQ.push("predict");setTimeout(runOnboarding,400);}
-  if(P.phase==="directions"&&!P.seen.includes("star")&&!UI.onboardQ.includes("star")&&!UI.boardOpen){UI.onboardQ.push("star");setTimeout(runOnboarding,500);}
+  if(P.phase==="directions"&&!P.seen.includes("star")&&!UI.onboardQ.includes("star")){UI.onboardQ.push("star");setTimeout(runOnboarding,500);}
 }
 
 
 let onboardingOpen=false;
 function guideTarget(key){
-  if(key==="star")return UI.boardOpen?null:document.querySelector(".pick");
-  if(key==="predict")return UI.boardOpen?null:document.querySelector(".gen-pick");
-  if(key==="iterate"){if(UI.boardOpen)return null;const m=[...document.querySelectorAll("#msgs .msg.sprout")];return m[m.length-1]||null;}
-  if(key==="boardintro")return getBoardEl()&&getBoardEl().querySelector(".sheet-h");
-  if(key==="mapentry")return getBoardEl()&&document.querySelector(".side [data-act=board]");
+  if(key==="star")return document.querySelector(".pick");
+  if(key==="predict")return document.querySelector(".gen-pick");
+  if(key==="iterate"){const m=[...document.querySelectorAll("#msgs .msg.sprout")];return m[m.length-1]||null;}
+  if(key==="boardintro")return document.querySelector("#boardColumn .column-head");
   if(!getBoardEl())return null;
-  if(key==="howto")return getBoardEl().querySelector(".sticky.new")||getBoardEl().querySelector(".sticky")||getBoardEl().querySelector(".entity");
+  if(key==="howto")return getBoardEl().querySelector(".sticky.new")||getBoardEl().querySelector(".sticky")||getBoardEl().querySelector(".map-node");
   if(key==="gen")return getBoardEl().querySelector("#boardFoot .btn");
   return getBoardEl().querySelector(`[data-col="${key}"]`);
 }
@@ -66,15 +67,13 @@ function startTour(){
 function runOnboarding(){
   if(onboardingOpen||!UI.onboardQ.length||pumping)return;
   const key=UI.onboardQ[0];
-  if(key==="mapentry"&&getBoardEl()&&!UI.sidePeek){UI.sidePeek={was:UI.sideOpen};UI.sideOpen=true;renderSide();}
   const el=guideTarget(key);
   if(!el){if(key==="star"||key==="predict"||!getBoardEl())return;UI.onboardQ.shift();return runOnboarding();}
   onboardingOpen=true;
   const info=GUIDE[key]||(key==="character"?CHAR_COL:COLMAP[key]);
-  const inSheet=["boardintro","mapentry"].includes(key)?null:el.closest(".sheet");
-  if(key==="mapentry"&&getBoardEl())getBoardEl().classList.add("peek");
+  const inSheet=el.closest(".board-column");
   let block,spot;
-  const par=inSheet?el.parentElement.closest(".col,.entity,.board-foot"):null;
+  const par=inSheet?el.parentElement.closest(".map-node,.map-category-tray,.board-foot"):null;
   if(inSheet){inSheet.classList.add("focusing");el.classList.add("focused");if(par)par.classList.add("focus-parent");}
   else{block=document.createElement("div");block.className="spot-block";spot=document.createElement("div");spot.className="spot";document.body.append(block,spot);}
   el.scrollIntoView({block:"center",behavior:"smooth"});
@@ -94,8 +93,6 @@ function runOnboarding(){
     co.querySelector("[data-ok]").focus({preventScroll:true});
     const close=all=>{if(epoch!==projectEpoch)return;co.remove();if(block){block.remove();spot.remove();}if(inSheet){inSheet.classList.remove("focusing");el.classList.remove("focused");if(par)par.classList.remove("focus-parent");}
       if(!P.seen.includes(key))P.seen.push(key);UI.onboardQ.shift();if(all){UI.onboardQ=[];}if(!UI.onboardQ.length)UI.touring=false;onboardingOpen=false;
-      if(getBoardEl())getBoardEl().classList.remove("peek");
-      if(key==="mapentry"&&UI.sidePeek){UI.sideOpen=UI.sidePeek.was;UI.sidePeek=null;renderSide();}
       if(key==="iterate"&&UI.afterIterate){const f=UI.afterIterate;UI.afterIterate=null;f();}
       runOnboarding();};
     co.querySelector("[data-ok]").onclick=()=>close(false);
@@ -108,17 +105,16 @@ function runOnboarding(){
 function addSticker(col,text,sub,effect){
   const s={id:uid(),col,text,sub,effect,status:"new",rot:rot(),pop:true};
   P.stickers.push(s);
+  ensureStickerNode(P,s);
   if(!P.seen.includes(col)&&!UI.onboardQ.includes(col))UI.onboardQ.push(col);
   return s;
 }
 function toConfirm(msg){say(msg);P.phase="confirm";
   if(!P.seen.includes("howto")&&!UI.onboardQ.includes("howto"))UI.onboardQ.unshift("howto");
-  if(!P.seen.includes("boardintro")&&!UI.onboardQ.includes("boardintro"))UI.onboardQ.unshift("boardintro","mapentry");
+  if(!P.seen.includes("boardintro")&&!UI.onboardQ.includes("boardintro"))UI.onboardQ.unshift("boardintro");
   if(!P.seen.includes("gen")&&!UI.onboardQ.includes("gen"))UI.onboardQ.push("gen");
-  render();
-  // the board pops up once Sprout has finished talking
-  const epoch=projectEpoch;
-  const wait=()=>{if(epoch!==projectEpoch)return;if(pumping)return setTimeout(wait,150);if(P.phase==="confirm"&&P.stickers.some(s=>s.status==="new")){UI.boardOpen=true;renderBoard();}};setTimeout(wait,200);}
+  if(innerWidth<=767)UI.tab="board";
+  render();}
 function startGame(who,act){
   const h=parseHero(who),a=parseAction(act);
   say(`I want to make a game about <b>${esc(who)}</b> <b>${esc(act)}</b>`,"kid");
@@ -151,7 +147,8 @@ function doNewChar(name){
 function confirmSticker(id){
   const s=P.stickers.find(x=>x.id===id);if(!s||s.status!=="new")return;
   s.status="ok";s.pop=true;
-  if(!P.stickers.some(x=>x.status==="new")){UI.boardOpen=true;say(P.versions.length?"All confirmed! Tap “Make my game!” to see your new rules in action.":"Both confirmed! Now you can make your game.");}
+  setStickerNodeStatus(P,id,"confirmed");
+  if(!P.stickers.some(x=>x.status==="new")){say(P.versions.length?"All confirmed! Tap “Make my game!” to see your new rules in action.":"Both confirmed! Now you can make your game.");}
   render();
 }
 /* a sticker can be rewritten before or after confirming; rewriting turns it red again */
@@ -172,9 +169,12 @@ function saveEdit(id){
   const t=ta.value.trim().replace(/\s+/g," ");
   if(!t){delSticker(id);return;}
   if(t!==editableText(s)){
+    const previousId=s.id;
     reinterpret(s,t);
     const old=s.id;s.id=uid();if(P.activeChar===old)P.activeChar=s.id;   // new id so the board treats it as a change to rebuild
     s.status="new";s.pop=true;P.phase="confirm";
+    ensureStickerNode(P,s,previousId);
+    setStickerNodeStatus(P,s.id,"idea");
     say(`Updated: “${esc(editableText(s))}”. It's red again, so confirm it to make it count.`);
   }
   render();autosave();
@@ -184,6 +184,7 @@ function delSticker(id){
   const s=P.stickers[i];
   if(s.col==="character"&&chars().length===1&&!P.versions.length){say("Your game needs a hero, so let's keep this one.");render();return;}
   P.stickers.splice(i,1);
+  removeStickerNode(P,id);
   if(P.activeChar===id){const c=chars()[0];P.activeChar=c?c.id:null;}
   if(!P.stickers.some(x=>x.status==="new")&&!P.stickers.some(x=>x.status==="ok"&&!built(x.id)))P.phase=P.versions.length?"directions":"confirm";
   render();
@@ -290,7 +291,7 @@ function generate(){
   const c=ctx(),Pq=predictionFor(news,c),round=P.versions.length+1;
   const lines=["Turning yellow notes into rules…",`Putting the ${c.hero.n} on the canvas…`,"Adding a breathing animation…","Hooking up the keyboard and mouse…","Checking edges and bumps…"];
   UI.gen={P:Pq,round,news,picked:null,done:false,status:lines[0]};
-  UI.boardOpen=false;P.phase="generating";UI.tab="create";
+  P.phase="generating";UI.tab="create";
   say(P.versions.length?"Let's change your game! Quick quiz:":"Let's make your game! Quick quiz:");
   say(esc(Pq.q));
   render();
@@ -308,13 +309,14 @@ function finishGen(){
   const g=UI.gen;if(!g||!g.done)return;UI.gen=null;
   if(generationTimer){clearInterval(generationTimer);generationTimer=null;}
   const first=g.round===1;
-  g.news.forEach(s=>P.lastBuilt.push(s.id));
+  g.news.forEach(s=>{P.lastBuilt.push(s.id);setStickerNodeStatus(P,s.id,"built");});
   const spec=buildSpec(false);
   const items=P.stickers.filter(s=>s.status==="ok"&&s.effect&&s.col!=="character").map(s=>s.text);
-  P.versions.push({n:g.round,spec,items,summary:g.news.map(s=>s.text).join(" · "),snapshot:JSON.parse(JSON.stringify({stickers:P.stickers,activeChar:P.activeChar,lastBuilt:P.lastBuilt}))});
+  P.versions.push({n:g.round,spec,items,summary:g.news.map(s=>s.text).join(" · "),journal:createVersionJournal(g.news,g.guess),snapshot:JSON.parse(JSON.stringify({stickers:P.stickers,activeChar:P.activeChar,lastBuilt:P.lastBuilt,designMap:P.designMap}))});
   const guess=g.guess!==undefined?g.guess:null;
   P.prediction=g.P.gap?{round:g.round,gap:g.P.gap,idx:g.picked!==null?g.P.a[g.picked].idx:null,guess}:null;
-  P.phase="playtest";P.feel=null;P.found=null;UI.explained=null;UI.paneOpen=false;UI.tab="create";UI.firstOpen=first;UI.pendingSpec=spec;UI.asked=false;clearTimeout(UI.askTimer);
+  P.phase="playtest";P.feel=null;P.found=null;UI.explained=null;UI.paneOpen=false;UI.tab="create";UI.firstOpen=first;UI.pendingSpec=null;UI.asked=false;clearTimeout(UI.askTimer);
+  game.load(spec);
   say(guess?`Got it! ${first?"Your game is ready":"Your game is updated"}. Go play and see if you guessed right.`:(first?"Done 🎉 Tap the card below to play.":"Updated! Tap the card below to play the new version."));
   render();autosave();
 }
@@ -358,7 +360,7 @@ function conceptOther(){if(pumping)return;UI.concept=null;P.phase="directions";s
 
 /* the play pane opens only when the kid taps the game card */
 function openPane(){
-  UI.paneOpen=true;UI.tab="preview";if(UI.firstOpen){UI.reveal=true;UI.firstOpen=false;}
+  UI.paneOpen=true;UI.previewOpen=true;UI.tab="preview";if(UI.firstOpen){UI.reveal=true;UI.firstOpen=false;}
   renderPane();renderTabs();renderLive();
   if(UI.pendingSpec){game.load(UI.pendingSpec);UI.pendingSpec=null;}
   setTimeout(()=>$("#cv").focus({preventScroll:true}),60);
@@ -372,6 +374,7 @@ function askFeel(){
   say(gs?`You guessed “${esc(gs)}”. Did that really happen?`:"How was it? Was it different from what you imagined? What was different?");
   renderer.showAsk(gs);
   $(".composer").classList.add("nudge");
+  renderPane();
 }
 function clearAsk(){const a=document.querySelector("#pane .ask");if(a)a.remove();$(".composer").classList.remove("nudge");}
 /* the kid's answer: respond to the feeling first, then reveal the gap, then the directions */
@@ -399,6 +402,8 @@ function feelReply(t){
     say(col?"You spotted it!":f?f.say:"Got it!");
   }
   P.found=col;
+  savePlaytestAssessment(P,{response:t,feeling:P.feel,discovery:col});
+  renderPane();autosave();
   const rest=()=>{
   if(why)say(why);
   if(col){const [what,impact]=CONCEPT[col];say(`In games, this is called <b>${COLMAP[col].zh}</b>. ${what} ${impact}`);UI.explained=col;}
@@ -440,7 +445,7 @@ function renameBot(){
 
 function beginAddCharacter(){
   UI.menuOpen=false;if(P.phase==="generating")return;
-  UI.boardOpen=false;renderBoard();
+  renderBoard();
   say("I want to add another character","kid");
   say("OK! Who is the new character?");
   P.phase="newchar";UI.tab="create";render();$("#composer").focus();
@@ -456,8 +461,8 @@ function resetProject(project){
   pumping=false;
   if(generationTimer){clearInterval(generationTimer);generationTimer=null;}
   document.querySelectorAll(".callout,.spot,.spot-block").forEach(el=>el.remove());
-  document.querySelectorAll(".focusing,.focused,.focus-parent,.peek").forEach(el=>el.classList.remove("focusing","focused","focus-parent","peek"));
-  onboardingOpen=false;UI.afterIterate=null;UI.sidePeek=null;UI.touring=false;
+  document.querySelectorAll(".focusing,.focused,.focus-parent").forEach(el=>el.classList.remove("focusing","focused","focus-parent"));
+  onboardingOpen=false;UI.afterIterate=null;UI.touring=false;
   P=project;
   showTyping(false);
 }

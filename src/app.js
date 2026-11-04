@@ -18,49 +18,52 @@ let P=fresh();
 const UI=createUIState(innerWidth);
 function renderLive(animate){flow.renderLive(animate);}
 
-/* ---------- sidebar / header / pane ---------- */
+/* ---------- header / project menu / pane ---------- */
 const allProjects=()=>readProjects();
 const renderer=createRenderer({getProject:()=>P,UI,botName,directions:()=>flow.directions(),chars:()=>projectCharacters(P),built:id=>isBuilt(P,id),editableText:s=>flow.editableText(s),allProjects});
-const {renderMsgs,renderSide,renderBar,renderPane,renderTabs}=renderer;
-function render(){P.updated=Date.now();renderSide();renderBar();renderPane();renderTabs();renderLive();renderBoard();}
+const {renderMsgs,renderJournal,renderProjects,renderBar,renderPane,renderTabs}=renderer;
+function render(){P.updated=Date.now();renderProjects();renderBar();renderPane();renderTabs();renderJournal();renderLive();renderBoard();}
 
-/* ---------- board modal ---------- */
+/* ---------- central design map ---------- */
 let boardEl=null;
 function renderBoard(){
   boardEl=renderer.renderBoard(boardEl);
-  if(!UI.boardOpen)return;
   P.stickers.forEach(s=>s.pop=false);
   flow.runOnboarding();
 }
 function rollback(){
   if(P.versions.length<2||flow.isPumping())return;
   const gone=P.versions.pop(),prev=P.versions[P.versions.length-1],snap=JSON.parse(JSON.stringify(prev.snapshot));
-  clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;UI.paneOpen=true;
-  P.stickers=snap.stickers;P.activeChar=snap.activeChar;P.lastBuilt=snap.lastBuilt;P.prediction=null;P.phase="directions";
+  clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;UI.paneOpen=true;UI.asked=false;
+  P.stickers=snap.stickers;P.activeChar=snap.activeChar;P.lastBuilt=snap.lastBuilt;P.designMap=snap.designMap||P.designMap;P.prediction=null;P.phase="directions";
   flow.say(`Back to the last version. “${esc(gone.summary)}” is off the board now. Try bold ideas. You can always add it back.`);
   render();autosave();game.load(prev.spec);
 }
 
 /* ---------- projects + export ---------- */
 function autosave(){
-  if(!P.stickers.length)return false;
-  const ok=saveProject(P);renderSide();return ok;
+  if(!P.stickers.length&&!P.designMap.nodes.length)return false;
+  const ok=saveProject(P);renderProjects();return ok;
 }
 function toast(t){const el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2200);}
 function loadProject(p){
   P=restoreProject(p,readBotName()||"");flow.resetProject(P);
-  UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.paneOpen=!!P.versions.length;UI.tab=P.versions.length?"preview":"create";
-  renderMsgs();render();
+  UI.onboardQ=[];UI.gen=null;UI.connectMode=false;UI.connectFrom=null;
   const v=P.versions[P.versions.length-1];
+  const awaitingPlay=!!v&&P.phase==="playtest";
+  UI.journalOpen=true;UI.previewOpen=!!v||UI.previewOpen;
+  UI.paneOpen=!!v&&!awaitingPlay;UI.tab=awaitingPlay?"create":(v?"preview":"create");
+  renderMsgs();render();
   clearTimeout(UI.askTimer);UI.asked=false;UI.pendingSpec=null;
-  if(v&&P.phase==="playtest"){UI.paneOpen=false;UI.tab="create";UI.pendingSpec=v.spec;game.clear();render();}
-  else if(v)game.load(v.spec);else game.clear();
+  if(v)game.load(v.spec);else game.clear();
 }
 function startFreshProject(resetAll){
   clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;
   P=fresh();flow.resetProject(P);
+  UI.connectMode=false;UI.connectFrom=null;
   if(resetAll){P.botName="";UI.expanded=new Set();}
-  UI.boardOpen=false;UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
+  UI.journalOpen=true;
+  UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
   game.clear();renderMsgs();render();flow.greet();
 }
 /* wipe everything (robot name, projects) and start like a first visit; asks for a second tap */
@@ -77,16 +80,24 @@ function newProject(){
 }
 function sheet(title,sub,body){
   const m=renderer.createSheet(title,sub,body);
-  m.addEventListener("click",e=>{if(e.target===m||e.target.closest("[data-close]"))m.remove();});
+  m.addEventListener("click",e=>{if(e.target===m||e.target.closest("[data-close]")){m.remove();if(m.id==="projectManager")$("[data-act=projects]")?.setAttribute("aria-expanded","false");}});
   $("#layer").appendChild(m);return m;
+}
+function openProjects(){
+  const existing=$("#projectManager");
+  const button=$("[data-act=projects]");
+  if(existing){existing.remove();button?.setAttribute("aria-expanded","false");return;}
+  const modal=sheet("Projects","Switch games or start a new one",`<div id="projectManagerBody"></div>`);
+  modal.id="projectManager";modal.classList.add("project-manager");button?.setAttribute("aria-expanded","true");renderProjects();
+  modal.querySelector?.("[data-act=new]")?.focus();
 }
 function exportHTML(){
   exportStandaloneGame(P.versions[P.versions.length-1],P.name,{sheet,toast,esc});
 }
 
 const game=window.TinkerEngine($("#cv"));
-const flow=createConversation({getProject:()=>P,UI,renderer,render,renderBoard,renderSide,renderPane,renderTabs,getBoardEl:()=>boardEl,autosave,game,botName,sheet,reduced});
-bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderSide,renderTabs,renderPane,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback});
+const flow=createConversation({getProject:()=>P,UI,renderer,render,renderBoard,renderPane,renderTabs,getBoardEl:()=>boardEl,autosave,game,botName,sheet,reduced});
+bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderProjects,renderTabs,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
 
 /* ---------- brand logo: token hops at uneven moments ---------- */
 renderer.renderBrand();

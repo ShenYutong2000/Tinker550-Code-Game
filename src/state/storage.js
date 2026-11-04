@@ -11,7 +11,7 @@ export const saveBotName=(name,storage)=>store.set(BOT_KEY,name,storage);
 export const readProjects=(storage)=>store.get(PROJECTS_KEY,storage)||[];
 
 export function saveProject(project,storage){
-  if(!project.stickers.length)return false;
+  if(!project.stickers.length&&!project.designMap?.nodes?.length)return false;
   const list=readProjects(storage).filter(saved=>saved.id!==project.id);
   project.updated=Date.now();list.unshift(JSON.parse(JSON.stringify(project)));
   return store.set(PROJECTS_KEY,list.slice(0,20),storage);

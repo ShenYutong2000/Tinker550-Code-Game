@@ -1,18 +1,39 @@
 import { cap } from '../design/parse.js';
+import { syncStickerNodes } from './design-map.js';
 
 export function createProject(botName){
-  return {id:"p"+Date.now().toString(36),botName,name:"",nameEdited:false,phase:"opening",stickers:[],activeChar:null,seen:[],chat:[],versions:[],lastBuilt:[],prediction:null,saved:[],updated:Date.now()};
+  return {id:"p"+Date.now().toString(36),botName,name:"",nameEdited:false,phase:"opening",stickers:[],activeChar:null,seen:[],chat:[],versions:[],lastBuilt:[],prediction:null,saved:[],designMap:{nodes:[],edges:[]},updated:Date.now()};
+}
+
+function migrateDesignMap(project, savedMap){
+  const map=savedMap;
+  if(map&&Array.isArray(map.nodes)&&Array.isArray(map.edges))return map;
+  const stickers=Array.isArray(project.stickers)?project.stickers:[];
+  const built=new Set(Array.isArray(project.lastBuilt)?project.lastBuilt:[]);
+  return {
+    nodes:stickers.map((sticker,index)=>({
+      id:"card-"+sticker.id,
+      stickerId:sticker.id,
+      title:sticker.text,
+      x:(index%3)*260,
+      y:Math.floor(index/3)*190,
+      status:sticker.status==="new"?"idea":built.has(sticker.id)?"built":"confirmed"
+    })),
+    edges:[]
+  };
 }
 
 export function restoreProject(saved, botName){
   const project=Object.assign(createProject(botName),JSON.parse(JSON.stringify(saved)));
   project.saved=project.saved||[];
+  project.designMap=migrateDesignMap(project,saved.designMap);
+  syncStickerNodes(project);
   if(["generating","choice","newchar"].includes(project.phase))project.phase=project.versions.length?"directions":(project.stickers.length?"confirm":"opening");
   return project;
 }
 
 export function createUIState(viewportWidth){
-  return {expanded:new Set(),editing:null,boardOpen:false,menuOpen:false,onboardQ:[],gen:null,choice:null,tab:"create",sideOpen:viewportWidth>900,paneOpen:false,reveal:false};
+  return {expanded:new Set(),editing:null,menuOpen:false,onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false,mapZoom:.8,connectFrom:null};
 }
 
 export const projectCharacters=project=>project.stickers.filter(sticker=>sticker.col==="character");

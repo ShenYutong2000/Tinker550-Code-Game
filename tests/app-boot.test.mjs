@@ -16,8 +16,10 @@ test('the modular entry boots and binds its input handlers', async () => {
   });
   const elements = new Map();
   for (const selector of [
-    '#cv', '#sideBody', '#app', '#gameName', '#feed', '#msgs', '#live',
-    '#composer', '#sendBtn', '#tabbar',
+    '#cv', '#app', '#gameName', '#feed', '#msgs', '#live', '#layer',
+    '#boardColumn', '#boardBody', '#boardFoot',
+    '#composer', '#sendBtn', '#tabbar', '#paneTitle', '#paneVer', '#rbBtn',
+    '#legend', '#assessment', '#journalEntries', '[data-act=export]',
   ]) elements.set(selector, element());
   globalThis.window = globalThis;
   globalThis.innerWidth = 1440;
@@ -44,9 +46,13 @@ test('the modular entry boots and binds its input handlers', async () => {
   const builtHTML = readFileSync(builtPage, 'utf8');
   const script = builtHTML.match(/<script type="module"[^>]+src="([^"]+)"/)[1];
   await import(new URL(script, builtPage).href);
-  assert.match(elements.get('#sideBody').innerHTML, /New project/);
   assert.match(elements.get('#live').innerHTML, /is typing/);
+  assert.match(elements.get('#boardBody').innerHTML, /map-toolbar/);
+  assert.match(elements.get('#boardBody').innerHTML, /map-viewport/);
+  assert.match(elements.get('#boardFoot').innerHTML, /Make my game/);
   assert.equal(elements.get('#composer').placeholder, 'Or just type: a cat catching stars');
+  assert.match(elements.get('#journalEntries').innerHTML, /design choices and playtest discoveries/);
+  assert.match(elements.get('#assessment').innerHTML, /How did this step go/);
   assert.equal(typeof listeners.get('document:click'), 'function');
   assert.equal(typeof listeners.get('document:keydown'), 'function');
   assert.equal(typeof listeners.get('document:input'), 'function');
@@ -64,6 +70,7 @@ test('the modular entry boots and binds its input handlers', async () => {
   saved.activeChar = 'hero';
   saved.lastBuilt = ['hero', 'goal'];
   saved.versions = [{ n: 1, spec: buildProjectSpec(saved, false), items: [], summary: 'catching stars' }];
+  saved.prediction = { round: 1, gap: 'rules', idx: 0, guess: 'you get 1 point' };
   saved.versions[0].spec.hero.n = '</script><script>alert(1)</script>';
   stored.set('tinkercade.projects.v6', JSON.stringify([saved]));
   for (const selector of ['#paneTitle', '#paneVer', '#rbBtn', '#legend']) elements.set(selector, element());
@@ -74,6 +81,9 @@ test('the modular entry boots and binds its input handlers', async () => {
   };
   click('[data-open]', { open: saved.id });
   assert.equal(elements.get('#paneVer').textContent, 'v1');
+  assert.match(elements.get('#journalEntries').innerHTML, /catching stars/);
+  assert.match(elements.get('#journalEntries').innerHTML, /you get 1 point/);
+  assert.match(elements.get('#assessment').innerHTML, /you get 1 point/);
 
   let download;
   globalThis.claude = { use: async () => ({ save: async payload => { download = payload; } }) };
