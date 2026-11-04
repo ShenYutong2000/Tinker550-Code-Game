@@ -39,6 +39,8 @@ npm run preview
 
 `npm run preview` 会启动本地静态服务器。若需要**双击 HTML 文件直接预览整个网站**，先运行 `npm run build`，再打开 `dist/standalone-preview.html`。根目录 `index.html` 是 Vite 源码入口，不能作为可运行的网站直接双击；双击时只会显示预览入口说明。
 
+**线上预览**：每次合并到 `main`，GitHub Actions（`.github/workflows/pages.yml`）会先运行 `npm run check`，通过后把构建结果发布到 <https://shenyutong2000.github.io/Tinker550-Code-Game/>。首次使用前，仓库管理员需在 GitHub 的 **Settings → Pages** 中把 **Source** 设为 **GitHub Actions**。线上版本的项目同样只保存在各自浏览器的 `localStorage` 中，访客之间互不共享。
+
 ## 2. 仓库目录：东西放在哪里
 
 ```text
