@@ -2,6 +2,8 @@
 
 这是一个帮助孩子提出游戏想法、用设计地图明确规则、生成并试玩网页小游戏的前端原型。技术栈是 Vite、原生 JavaScript、CSS、Canvas 和浏览器 `localStorage`。当前版本还没有接入 AI 或后端：引导对话和设计选项都由本地代码实现。
 
+**一句话总结：**Tinkercade 让孩子把游戏创意变成可规划、可试玩、可迭代的网页小游戏，并在过程中练习工程思维。
+
 工作区以中央 Design Map 为主；Journal 和游戏 Preview 位于两侧，可分别收起或恢复。窄屏使用 Journal、Board、Preview 底部导航切换。
 
 仓库从原始单文件原型整理而来。现阶段修改代码时，应保留已有页面呈现、文案、交互和 `v6` 存档兼容性。原型与截图在 [`baseline/`](baseline/README.md)；模块关系见 [架构说明](docs/architecture.md)，完整手动操作步骤见 [验收清单](docs/acceptance.md)。
