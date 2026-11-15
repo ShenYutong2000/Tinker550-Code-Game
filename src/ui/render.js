@@ -30,7 +30,7 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
     const P = getProject();
     const ta = $("#composer"), send = $("#sendBtn");
     ta.placeholder = templates.composerPlaceholder(P.phase);
-    const off = P.phase === "confirm" || P.phase === "generating" || P.phase === "reacting";
+    const off = P.phase === "generating" || P.phase === "reacting";
     ta.disabled = off; send.disabled = off;
   }
   function renderProjects() {
@@ -72,12 +72,22 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
   }
   function renderBoard(boardEl) {
     if (!boardEl) boardEl=$("#boardColumn");
-    const top=$(".lens-window-body")?.scrollTop||0;
+    const old=$("#mapViewport");
+    if(old){UI.mapScrollLeft=old.scrollLeft;UI.mapScrollTop=old.scrollTop;}
     $("#boardBody").innerHTML = templates.boardHTML(); $("#boardFoot").innerHTML = templates.boardFoot();
-    const body=$(".lens-window-body");
-    if(body)body.scrollTop=top;
+    const viewport=$("#mapViewport"),world=$("#mapWorld");
+    /* after a new draft (or "Fit"), zoom so all nine clusters are visible, once the viewport has a size */
+    if(UI.fitMap&&viewport&&world&&viewport.clientWidth>0){
+      const w=parseFloat(world.style.width),h=parseFloat(world.style.height);
+      UI.mapZoom=Math.max(.35,Math.min(1,(viewport.clientWidth-16)/w,(viewport.clientHeight-16)/h));
+      UI.fitMap=false;UI.mapScrollLeft=0;UI.mapScrollTop=0;
+      $("#boardBody").innerHTML = templates.boardHTML();
+    }
+    const next=$("#mapViewport");
+    if(next){next.scrollLeft=UI.mapScrollLeft||0;next.scrollTop=UI.mapScrollTop||0;}
     return boardEl;
   }
+  function renderEdges() { const layer = $("#mapEdges"); if (layer) layer.innerHTML = templates.edgesHTML(); }
   function makeCallout(info, more) {
     const co = document.createElement("div");
     co.className = "callout"; co.setAttribute("role", "dialog"); co.setAttribute("aria-label", info.zh);
@@ -95,5 +105,5 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
     return m;
   }
   function renderBrand() { document.querySelectorAll("[data-bricks]").forEach(box => { box.innerHTML = LOGO; }); }
-  return { msgNode, scrollDown, showTyping, renderMsgs, renderJournal, renderLive, renderProjects, renderBar, renderPane, renderTabs, renderBoard, makeCallout, showAsk, createSheet, renderBrand };
+  return { msgNode, scrollDown, showTyping, renderMsgs, renderJournal, renderLive, renderProjects, renderBar, renderPane, renderTabs, renderBoard, renderEdges, makeCallout, showAsk, createSheet, renderBrand };
 }

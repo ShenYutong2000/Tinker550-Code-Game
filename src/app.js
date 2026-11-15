@@ -36,6 +36,7 @@ function rollback(){
   const gone=P.versions.pop(),prev=P.versions[P.versions.length-1],snap=JSON.parse(JSON.stringify(prev.snapshot));
   clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;UI.paneOpen=true;UI.asked=false;
   P.stickers=snap.stickers;P.activeChar=snap.activeChar;P.lastBuilt=snap.lastBuilt;P.designMap=snap.designMap||P.designMap;P.prediction=null;P.phase="directions";
+  UI.focus=null;UI.adding=null;UI.connectFrom=null;UI.editing=null;
   flow.say(`Back to the last version. “${esc(gone.summary)}” is off the board now. Try bold ideas. You can always add it back.`);
   render();autosave();game.load(prev.spec);
 }
@@ -48,7 +49,7 @@ function autosave(){
 function toast(t){const el=document.createElement("div");el.className="toast";el.textContent=t;document.body.appendChild(el);setTimeout(()=>el.remove(),2200);}
 function loadProject(p){
   P=restoreProject(p,readBotName()||"");flow.resetProject(P);
-  UI.onboardQ=[];UI.gen=null;UI.lens=null;UI.linking=false;UI.linkFrom=null;UI.idea=null;UI.ideaText="";
+  UI.onboardQ=[];UI.gen=null;UI.focus=null;UI.adding=null;UI.connectFrom=null;UI.editing=null;UI.fitMap=true;UI.idea=null;UI.ideaText="";
   const v=P.versions[P.versions.length-1];
   const awaitingPlay=!!v&&P.phase==="playtest";
   UI.journalOpen=true;UI.previewOpen=!!v||UI.previewOpen;
@@ -60,7 +61,7 @@ function loadProject(p){
 function startFreshProject(resetAll){
   clearTimeout(UI.askTimer);flow.clearAsk();UI.pendingSpec=null;
   P=fresh();flow.resetProject(P);
-  UI.lens=null;UI.linking=false;UI.linkFrom=null;UI.idea=null;UI.ideaText="";
+  UI.focus=null;UI.adding=null;UI.connectFrom=null;UI.editing=null;UI.fitMap=true;UI.feel=null;UI.idea=null;UI.ideaText="";
   if(resetAll){P.botName="";UI.expanded=new Set();}
   UI.journalOpen=true;
   UI.onboardQ=[];UI.gen=null;UI.choice=null;UI.tab="create";UI.paneOpen=false;
@@ -97,7 +98,7 @@ function exportHTML(){
 
 const game=window.TinkerEngine($("#cv"));
 const flow=createConversation({getProject:()=>P,UI,renderer,render,renderBoard,renderPane,renderTabs,getBoardEl:()=>boardEl,autosave,game,botName,sheet,reduced});
-bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderProjects,renderTabs,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
+bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderEdges:()=>renderer.renderEdges(),renderProjects,renderTabs,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
 
 /* ---------- brand logo: token hops at uneven moments ---------- */
 renderer.renderBrand();
