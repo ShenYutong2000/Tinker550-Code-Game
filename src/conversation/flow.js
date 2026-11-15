@@ -8,6 +8,7 @@ import { saveBotName } from "../state/storage.js";
 import { createVersionJournal, savePlaytestAssessment } from "../state/journal.js";
 import { connectNotes, ensureStickerNode, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
 import { esc, GUIDE } from "../ui/templates.js";
+import { writeProgram, runProgram } from "../game/program.js";
 
 export function createConversation({ getProject, UI, renderer, render, renderBoard, renderPane, renderTabs, getBoardEl, autosave, game, botName, sheet, reduced }) {
 const $=(s,r=document)=>r.querySelector(s);
@@ -335,9 +336,10 @@ function buildVersion(g){
   P.lastBuilt=P.stickers.map(s=>s.id);
   P.stickers.forEach(s=>{delete s.replaces;});
   P.stickers.forEach(s=>setStickerNodeStatus(P,s.id,"built"));
-  const spec=buildSpec(false);
+  /* the program written from the map is the code that runs: the game plays exactly what it produces */
+  const program=writeProgram(P).source,spec=runProgram(program);
   const items=P.stickers.filter(s=>s.status==="ok"&&s.effect&&s.col!=="character").map(s=>s.text);
-  P.versions.push({n:g.round,spec,items,summary:g.news.map(s=>s.text).join(" · "),journal:createVersionJournal(g.news,g.guess),snapshot:JSON.parse(JSON.stringify({stickers:P.stickers,activeChar:P.activeChar,lastBuilt:P.lastBuilt,designMap:P.designMap}))});
+  P.versions.push({n:g.round,spec,program,items,summary:g.news.map(s=>s.text).join(" · "),journal:createVersionJournal(g.news,g.guess),snapshot:JSON.parse(JSON.stringify({stickers:P.stickers,activeChar:P.activeChar,lastBuilt:P.lastBuilt,designMap:P.designMap}))});
   const guess=g.guess!==undefined?g.guess:null;
   P.prediction=g.P.gap?{round:g.round,gap:g.P.gap,idx:g.picked!==null?g.P.a[g.picked].idx:null,guess}:guess?{round:g.round,gap:null,idx:null,guess}:null;
   P.phase="playtest";P.feel=null;P.found=null;UI.explained=null;UI.paneOpen=false;UI.tab="create";UI.firstOpen=first;UI.pendingSpec=null;UI.asked=false;clearTimeout(UI.askTimer);
