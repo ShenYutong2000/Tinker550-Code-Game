@@ -1,5 +1,6 @@
 import "./game/engine.js";
 import { exportStandaloneGame } from "./game/export.js";
+import engineSource from "./game/engine.js?raw";
 import { createProject, restoreProject, createUIState, projectCharacters, isBuilt } from "./state/project.js";
 import { readBotName, readProjects, saveProject, clearSavedData, resetFromLocation } from "./state/storage.js";
 import { esc } from "./ui/templates.js";
@@ -20,14 +21,14 @@ function renderLive(animate){flow.renderLive(animate);}
 
 /* ---------- header / project menu / pane ---------- */
 const allProjects=()=>readProjects();
-const renderer=createRenderer({getProject:()=>P,UI,botName,directions:()=>flow.directions(),chars:()=>projectCharacters(P),built:id=>isBuilt(P,id),editableText:s=>flow.editableText(s),allProjects});
+const renderer=createRenderer({getProject:()=>P,UI,botName,directions:()=>flow.directions(),chars:()=>projectCharacters(P),built:id=>isBuilt(P,id),editableText:s=>flow.editableText(s),allProjects,engineSource});
 const {renderMsgs,renderJournal,renderProjects,renderBar,renderPane,renderTabs}=renderer;
 function render(){P.updated=Date.now();renderProjects();renderBar();renderPane();renderTabs();renderJournal();renderLive();renderBoard();}
 
 /* ---------- central design map ---------- */
 let boardEl=null;
 function renderBoard(){
-  boardEl=renderer.renderBoard(boardEl);
+  boardEl=renderer.renderBoard(boardEl);renderer.renderCode();
   P.stickers.forEach(s=>s.pop=false);
   flow.runOnboarding();
 }
@@ -98,7 +99,7 @@ function exportHTML(){
 
 const game=window.TinkerEngine($("#cv"));
 const flow=createConversation({getProject:()=>P,UI,renderer,render,renderBoard,renderPane,renderTabs,getBoardEl:()=>boardEl,autosave,game,botName,sheet,reduced});
-bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderEdges:()=>renderer.renderEdges(),renderProjects,renderTabs,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
+bindEvents({getProject:()=>P,UI,flow,render,renderBoard,renderEdges:()=>renderer.renderEdges(),renderCode:()=>renderer.renderCode(),renderProjects,renderTabs,renderLive,getBoardEl:()=>boardEl,autosave,toast,allProjects,loadProject,exportHTML,newProject,restartAll,rollback,openProjects});
 
 /* ---------- brand logo: token hops at uneven moments ---------- */
 renderer.renderBrand();

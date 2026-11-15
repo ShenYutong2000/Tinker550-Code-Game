@@ -1,7 +1,8 @@
 import { COLS, COLMAP, FEELINGS } from "../design/catalog.js";
 import { alignmentLabel } from "../state/journal.js";
 import { focusSets, HEAD_H, LINK_LABELS, mapLayout, noteLinks } from "../state/design-map.js";
-import { pendingChanges } from "../state/project.js";
+import { pendingChanges, ruleLines } from "../state/project.js";
+import { codeFor, writeProgram } from "../game/program.js";
 
 export const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 export const ROBOT=`<svg class="avatar" viewBox="0 0 120 120" aria-hidden="true"><rect x="34" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="68" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="18" y="22" width="84" height="80" rx="14" fill="#FFD166"/><rect x="18" y="90" width="84" height="12" rx="6" fill="#D9A13A"/><rect x="26" y="30" width="22" height="8" rx="4" fill="#FFE6A6"/><g class="eye"><rect x="35" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="70" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="39" y="51" width="5" height="5" fill="#fff"/><rect x="74" y="51" width="5" height="5" fill="#fff"/></g><ellipse cx="30" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><ellipse cx="90" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><path d="M49 74 Q60 85 71 74" stroke="#15102A" stroke-width="6" fill="none" stroke-linecap="round"/></svg>`;
@@ -20,7 +21,7 @@ export const GUIDE={
   iterate:{lab:"A designer's secret",ic:"🔁",zh:"Different? That's totally normal!",tip:"Every game designer's first version looks different from what they imagined.<br>This is how they all make games: <b>play → spot what's different → change it → play again</b>.<br>We'll do it round by round too, until it's the game you want."},
   star:{lab:"What's next",ic:"🧭",zh:"Three ways to pick",tip:"<b>① Tap a card</b> to pick something to change.<br><b>② Tap ☆</b> to save an idea in \"My game ideas\" for later.<br><b>③ Write</b> your own idea below.<br>Then tap \"This one!\" to keep going."}
 };
-export function createTemplates({ getProject, UI, botName, directions, chars, built, editableText, allProjects, journalEntries, assessmentView }) {
+export function createTemplates({ getProject, UI, botName, directions, chars, built, editableText, allProjects, journalEntries, assessmentView, engineSource }) {
 function messageHTML(m){return m.who==="kid"?`<div class="body">${m.html}</div>`:`${ROBOT}<div class="body">${m.html}</div>`;}
 function typingHTML(){return `<div class="msg" style="margin-left:-42px">${ROBOT}<div class="typing" aria-label="${esc(botName())} is typing"><i></i><i></i><i></i><span class="who">${esc(botName())} is typing…</span></div></div>`;}
 const COMPOSER_PLACEHOLDER={naming:"Give your robot buddy a name…",opening:"Or just type your game idea here…",choice:"Finish this sentence…",confirm:"Or write another idea…",generating:"Pick one above, or write your guess…",playtest:"What did you see?",directions:"Or write your own idea here…",concept:"Or write a different idea…"};
@@ -170,7 +171,7 @@ function inspectorHTML(sets){
       :`<p class="insp-text">${esc(noteText(s))}</p>${s.sub?`<p class="insp-sub">${esc(s.sub)}</p>`:""}<p class="insp-status">${status}</p>`}
     ${mine.length?`<div class="insp-sec"><b>Connections</b><ul class="insp-links">${mine.map(row).join("")}</ul></div>`:`<p class="insp-sub">Not connected yet. Use 🔗 to show what this causes.</p>`}
     ${affects.length?`<div class="insp-sec"><b>A change here also affects</b><div class="insp-affects">${affects.map(o=>`<button class="insp-note affected" data-note="${o.id}">${label(o)}</button>`).join("")}</div></div>`:""}
-    ${UI.editing===s.id?"":`<div class="insp-actions"><button class="btn soft" data-map-act="edit">✏️ Edit</button><button class="btn soft" data-map-act="connect">🔗 Connect to…</button>${s.col==="character"&&hero&&hero.id!==s.id?`<button class="btn soft" data-char="${s.id}">⭐ Make main</button>`:""}<button class="btn soft danger" data-map-act="delete">🗑 Remove</button></div>`}
+    ${UI.editing===s.id?"":`<div class="insp-actions"><button class="btn soft" data-map-act="edit">✏️ Edit</button><button class="btn soft" data-map-act="connect">🔗 Connect to…</button><button class="btn soft" data-act="show-code">&lt;/&gt; See the code</button>${s.col==="character"&&hero&&hero.id!==s.id?`<button class="btn soft" data-char="${s.id}">⭐ Make main</button>`:""}<button class="btn soft danger" data-map-act="delete">🗑 Remove</button></div>`}
   </aside>`;
 }
 function boardHTML(){
@@ -189,6 +190,45 @@ function boardFoot(){
   if(!P.versions.length)return `<span class="map-build-hint">Answer the questions on the left to get a first draft</span><button class="btn" disabled>Make my game!</button>`;
   return `<span class="map-build-hint">${n?plural(n,"change")+" not in the game yet":"The game matches your map"}</span><button class="btn" data-act="generate" ${n&&P.phase!=="generating"?"":"disabled"}>▶ Update my game</button>`;
 }
+/* ---------- computation view: the program made from the map, and the engine lines that run it ---------- */
+function codeHTML(line){
+  const html=esc(line),cut=html.startsWith("//")?0:html.indexOf("  //");
+  const code=cut===0?"":cut>0?html.slice(0,cut):html,note=cut===0?html:cut>0?html.slice(cut):"";
+  return code.replace(/(&quot;.*?&quot;)/g,'<span class="cs">$1</span>').replace(/\b(game|when|then)\b/g,'<span class="ck">$1</span>')+(note?`<span class="cc">${note}</span>`:"");
+}
+function linesHTML(lines,show,lit,pending){
+  let out="",last=-2;
+  for(const i of show){
+    if(i>last+1&&last>=0)out+=`<div class="code-gap">⋯</div>`;
+    out+=`<div class="code-line ${lit.has(i)?"lit":""} ${pending.has(i)?"pending":""}"><span class="ln">${i+1}</span><code>${codeHTML(lines[i])}</code></div>`;last=i;
+  }
+  return `<div class="code-block">${out}</div>`;
+}
+function codeViewHTML(){
+  const P=getProject();
+  if(!P.versions.length)return `<div class="code-empty"><span aria-hidden="true">&lt;/&gt;</span><h2>Your game's code will appear here</h2><p>Answer the questions to get a first draft. Every note on your map becomes a few lines of code.</p></div>`;
+  const program=writeProgram(P),all=program.lines.map((_,i)=>i),builtRules=ruleLines(P.versions.at(-1).program);
+  const pending=new Set();
+  for(const s of P.stickers)if(!built(s.id))(program.notes[s.id]||[]).forEach(i=>{if(i<program.ruleStart)pending.add(i);});
+  program.lines.forEach((line,i)=>{if(line.startsWith("when(")&&!builtRules.has(line))pending.add(i);});
+  const whole=(lit)=>`<details class="code-all"><summary>See the whole program (${program.lines.length} lines)</summary>${linesHTML(program.lines,all,lit,pending)}</details>`;
+  const legend=pending.size?`<p class="code-note"><span class="code-pending-key"></span>Lines with an orange edge aren't running yet. Tap “Update my game” to run them.</p>`:"";
+  const focus=UI.focus;
+  if(focus&&focus.note){
+    const c=codeFor(program,P,focus.note,engineSource);if(!c)return "";
+    const lit=new Set(c.lines),show=[...lit].sort((a,b)=>a-b);
+    const engine=c.engine.length?`<details class="code-engine" open><summary>Inside the game engine</summary><p class="code-note">These lines of <code>engine.js</code> do the work every frame.</p><div class="code-block">${c.engine.map(l=>`<div class="code-line lit"><span class="ln">${l.n}</span><code>${esc(l.text)}</code></div>`).join("")}</div></details>`:"";
+    return `<div class="code-head"><span>${COLMAP[c.sticker.col].ic}</span><div><b>Code for “${esc(c.sticker.text.replace(/^“(.*)”$/,"$1"))}”</b><span>${esc(COLMAP[c.sticker.col].en)} · ${built(c.sticker.id)?"running in your game":"not running yet"}</span></div></div>
+      ${show.length?linesHTML(program.lines,show,lit,pending):""}${legend}
+      ${c.explain.length?`<div class="code-explain"><b>What it does</b>${c.explain.map(t=>`<p>${esc(t)}</p>`).join("")}</div>`:""}
+      ${engine}${whole(lit)}`;
+  }
+  if(focus&&focus.col){
+    const c=COLMAP[focus.col],lit=new Set(P.stickers.filter(s=>s.col===c.key).flatMap(s=>program.notes[s.id]||[])),show=[...lit].sort((a,b)=>a-b);
+    return `<div class="code-head"><span>${c.ic}</span><div><b>Code for ${esc(c.en)}</b><span>Tap one note to see what each line does</span></div></div>${show.length?linesHTML(program.lines,show,lit,pending):`<p class="code-note">No notes here yet, so no code either.</p>`}${legend}${whole(lit)}`;
+  }
+  return `<div class="code-head"><span>&lt;/&gt;</span><div><b>Your game's program</b><span>Made from your design map. Tap a note on the map to see the lines that make it work.</span></div></div>${linesHTML(program.lines,all,new Set(),pending)}${legend}`;
+}
 function guideCalloutHTML(info, more){
 if(info.mini)return `<span>👈 ${info.zh}</span><button class="btn" data-ok>OK</button>`;
   return `<div class="lab">${info.lab||("Game element · "+info.en)}</div><h3>${info.ic} ${info.zh}</h3><p>${info.tip}</p><div class="row"><button class="btn" data-ok>${more?"Next":"Got it"}</button>${more?`<button class="link" data-skip>Skip tour</button>`:""}</div>`;
@@ -199,5 +239,5 @@ return `${ROBOT}<div><b>${gs?"You guessed “"+esc(gs)+"”. Did that happen?":"
 function sheetHTML(title, sub, body){
 return `<div class="sheet narrow" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-h"><span class="t">${title}</span><span class="s">${sub}</span><button class="ibtn" data-close aria-label="Close">${X_ICON}</button></div><div class="sheet-b">${body}</div></div>`;
 }
-return { messageHTML, typingHTML, composerPlaceholder, journalHTML, assessmentHTML, paneLegendHTML, widgetHTML, projectsHTML, boardHTML, boardFoot, edgesHTML:()=>edgesHTML(mapLayout(getProject())), guideCalloutHTML, askHTML, sheetHTML };
+return { codeViewHTML, messageHTML, typingHTML, composerPlaceholder, journalHTML, assessmentHTML, paneLegendHTML, widgetHTML, projectsHTML, boardHTML, boardFoot, edgesHTML:()=>edgesHTML(mapLayout(getProject())), guideCalloutHTML, askHTML, sheetHTML };
 }

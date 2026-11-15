@@ -1,5 +1,6 @@
 import { cap } from '../design/parse.js';
 import { syncStickerNodes } from './design-map.js';
+import { writeProgram } from '../game/program.js';
 
 export function createProject(botName){
   return {id:"p"+Date.now().toString(36),botName,name:"",nameEdited:false,phase:"opening",stickers:[],activeChar:null,seen:[],chat:[],versions:[],lastBuilt:[],prediction:null,saved:[],designMap:{nodes:[],edges:[]},updated:Date.now()};
@@ -33,16 +34,22 @@ export function restoreProject(saved, botName){
 }
 
 export function createUIState(viewportWidth){
-  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
+  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,paneTab:"play",adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
 }
 
 export const projectCharacters=project=>project.stickers.filter(sticker=>sticker.col==="character");
 export const isBuilt=(project,id)=>project.lastBuilt.includes(id);
-/* changes on the map that the game doesn't have yet: new or rewritten notes, and built notes that were removed
-   (a rewritten note gets a new id and remembers the one it replaces, so one rewrite counts once) */
+/* the when(...) lines of a program: one per arrow the game runs as a rule */
+export const ruleLines=source=>new Set(String(source||"").split("\n").filter(line=>line.startsWith("when(")));
+/* changes on the map that the game doesn't have yet: new or rewritten notes, built notes that were removed,
+   and rules added or taken away by arrows (a rewritten note remembers the id it replaces, so one rewrite counts once) */
 export function pendingChanges(project){
   const ids=new Set(project.stickers.map(sticker=>sticker.id)),replaced=new Set(project.stickers.map(sticker=>sticker.replaces).filter(Boolean));
-  return project.stickers.filter(sticker=>!project.lastBuilt.includes(sticker.id)).length+project.lastBuilt.filter(id=>!ids.has(id)&&!replaced.has(id)).length;
+  const notes=project.stickers.filter(sticker=>!project.lastBuilt.includes(sticker.id)).length+project.lastBuilt.filter(id=>!ids.has(id)&&!replaced.has(id)).length;
+  const version=project.versions[project.versions.length-1];
+  if(!version)return notes;
+  const now=ruleLines(writeProgram(project).source),then=ruleLines(version.program);
+  return notes+[...now].filter(line=>!then.has(line)).length+[...then].filter(line=>!now.has(line)).length;
 }
 
 export function buildProjectSpec(project,includeNew){

@@ -1,7 +1,7 @@
 import { esc } from "../ui/templates.js";
 import { connectNotes, mapLayout, moveCluster, NOTE_GAP, NOTE_H, reorderNote, setLinkLabel, toggleCluster, unlinkNotes } from "../state/design-map.js";
 
-export function bindEvents({ getProject, UI, flow, render, renderBoard, renderEdges, renderProjects, renderTabs, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback, openProjects }) {
+export function bindEvents({ getProject, UI, flow, render, renderBoard, renderEdges, renderCode, renderProjects, renderTabs, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback, openProjects }) {
 const $=(s,r=document)=>r.querySelector(s);
 const {say,doOpening,send,generate,saveEdit,delSticker,pickOption,submitGuess,pickGo,conceptDesign,conceptOther,openPane,autosize,renameBot,startTour}=flow;
 function closeProjects(){const modal=$("#projectManager");if(modal){modal.remove();$("[data-act=projects]")?.setAttribute("aria-expanded","false");}}
@@ -72,6 +72,7 @@ document.addEventListener("click",e=>{
     render();autosave();return;}
   const note=t.closest("[data-note]");if(note&&!flow.isOnboardingOpen()){focusNote(note.dataset.note);return;}
   if(t.closest("#mapViewport")&&!t.closest(".cluster")&&(UI.focus||UI.connectFrom)){clearMapSelection();renderBoard();return;}
+  const paneTab=t.closest("[data-pane-tab]");if(paneTab){UI.paneTab=paneTab.dataset.paneTab;renderCode();if(UI.paneTab==="play")setTimeout(()=>$("#cv").focus({preventScroll:true}),40);return;}
   const tab=t.closest("[data-tab]");if(tab&&tab.closest("#tabbar")){UI.tab=tab.dataset.tab;if(UI.tab==="create")UI.journalOpen=true;if(UI.tab==="preview")UI.previewOpen=true;renderTabs();if(UI.tab==="preview")openPane();return;}
   const fill=t.closest("[data-fill]");if(fill){const i=$("#"+fill.dataset.fill);i.value=fill.dataset.val;if(i.id==="composer"){autosize();send();}else i.focus();return;}
   const ak=t.closest("#pane .ask");if(ak&&!t.closest("[data-act]")&&innerWidth<=900){UI.tab="create";renderTabs();setTimeout(()=>$("#composer").focus(),50);return;}
@@ -94,6 +95,7 @@ document.addEventListener("click",e=>{
       cancel:flow.cancelChoice,
       guess:submitGuess,
       openpane:openPane,pickgo:pickGo,cdesign:conceptDesign,cother:conceptOther,"assessment-chat":()=>{if(innerWidth<=767){UI.tab="create";UI.journalOpen=true;renderTabs();}setTimeout(()=>$("#composer").focus(),40);},dismissask:()=>{const a=document.querySelector("#pane .ask");if(a)a.remove();},
+      "show-code":()=>{UI.paneTab="code";UI.previewOpen=true;if(innerWidth<=767)UI.tab="preview";renderTabs();renderCode();},
       projects:openProjects,
       save:()=>{if(!P.stickers.length&&!P.designMap.nodes.length){toast("Add your first design note, then save");return;}toast(autosave()?"Saved on this device":"This browser won't let me save. Try another window.");},
       new:()=>{newProject();closeProjects();},rename:renameBot,tour:startTour,restart:restartAll

@@ -20,6 +20,12 @@
 3. 点击区块的 `＋`，输入新想法并 `Add to map`；新便签标记 `new`，底部显示 `1 change not in the game yet`。在面板点击 `🔗 Connect to…`，再点击另一区块的便签，确认出现跨元素箭头；尝试连接自己和重复连接，确认被阻止。编辑一条 ✨ 便签，确认它变为 `✏️ My idea`、保留原有箭头，且只算一处改动。删除一条便签，确认相关箭头一同移除。
 4. 点击 `▶ Update my game`，选择一项预测并点击 `I think so!`。确认右侧更新为 `v2`，`new` 标记消失，底部显示 `The game matches your map`。点击 `Undo`，确认地图（包括箭头）和游戏返回 `v1`。
 
+## Code 视图
+
+1. 在右侧面板切换到 `</> Code`，未选中便签时显示整段游戏程序，按九个元素分组，最后是 RULES。选中 `if the cat touches a bomb, it loses 1 life`，或在便签面板点击 `</> See the code`：只显示这张便签的程序行（黄色标记），下面是 `What it does` 的说明和 `Inside the game engine` 中 `engine.js` 的碰撞检测与生命减少两行。手机上点击 `See the code` 会切换到 Preview 标签并打开 Code。
+2. 在 CONFLICT 添加 `the stars come faster and faster`，再把 `bombs fall from the sky` 连接到它。确认 Code 中出现 `when("hero is hit", then.goFaster());`，加速那一行变为 `// waits for a rule below`，两处都带橙色边表示尚未运行；底部显示 2 处改动。点击 `Update my game` 后橙色边消失；试玩时每次被炸弹击中，画面出现 `FASTER!`，之后一切变快。
+3. 把 `BOUNDARIES` 便签连接到 `PLAYERS` 便签，确认 RULES 中写明 “not in the code yet”，游戏不变。切回 `▶ Play` 时画布仍在运行。
+
 ## 试玩与迭代
 
 1. 打开 `v1` 试玩，等待试玩反馈提示，输入 `it was too hard` 等体验描述。确认右侧 Assessment 记录孩子原话；左侧 Journal 的 `v1` 条目显示草稿便签和试玩发现。

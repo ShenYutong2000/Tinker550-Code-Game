@@ -29,14 +29,34 @@ function Game(canvas){
   function load(spec){sp=spec;reset();}
   function clear(){sp=null;st=null;}
   function reset(){
-    st={t:0,heroes:[hero(0)],goods:[],hz:[],bul:[],parts:[],pops:[],npcs:[],score:[0,0],lives:sp.lives||0,timer:sp.timer||0,coins:0,sg:.4,sh:1.2,sb:2,over:null,ot:0,enemy:null,alive:0};
+    st={t:0,heroes:[hero(0)],goods:[],hz:[],bul:[],parts:[],pops:[],npcs:[],score:[0,0],lives:sp.lives||0,timer:sp.timer||0,coins:0,sg:.4,sh:1.2,sb:2,over:null,ot:0,enemy:null,alive:0,boost:1,drop:null};
     if(sp.players===2) st.heroes.push(hero(1));
     const npcSrc=sp.players===2?sp.others.slice(1):sp.others;
     npcSrc.forEach((o,k)=>st.npcs.push({e:o.e,x:60+k*90,y:sp.mode==="roam"?80+k*40:GROUND-16,vx:(k%2?-1:1)*40,t:Math.random()*5}));
     if(sp.enemy) st.enemy={x:W-30,y:40,e:sp.enemy};
   }
-  const hasScore=()=>sp.onCatch==="score"||sp.dodgeScore||sp.jumpScore;
-  function addScore(i,n,x,y){const k=sp.pmode==="versus"?i:0;st.score[k]+=n;st.pops.push({x,y,t:0,s:"+"+n,c:"#FFD166"});}
+  const hasScore=()=>sp.onCatch==="score"||sp.dodgeScore||sp.jumpScore||(sp.rules||[]).some(r=>r.do.some(a=>a.act==="addPoint"));
+  function addScore(i,n,x,y){const k=sp.pmode==="versus"?i:0;st.score[k]+=n;st.pops.push({x,y,t:0,s:"+"+n,c:"#FFD166"});fire("score",st.heroes[i]||st.heroes[0],x,y);}
+  // --- rules from the design map: when something happens, do something ---
+  let depth=0;
+  function fire(event,h,x,y){
+    if(depth>2||st.over)return;depth++;
+    for(const rule of sp.rules||[])if(rule.when===event)for(const a of rule.do)act(a,h,x,y);
+    depth--;
+  }
+  function act(a,h,x,y){
+    if(a.act==="goFaster"){st.boost*=1.25;st.pops.push({x,y:y-20,t:0,s:"FASTER!",c:"#FF6B35"});}
+    if(a.act==="loseLife"&&sp.lives){st.lives--;st.pops.push({x:h.x,y:h.y-30,t:0,s:"-❤️",c:"#FF7B7B"});if(st.lives<=0)end("lose");}
+    if(a.act==="addPoint")addScore(h.i,1,x,y);
+    if(a.act==="addCoin"){st.coins++;st.pops.push({x,y:y-14,t:0,s:"🪙",c:"#FFD166"});}
+    if(a.act==="grow"){h.ts=Math.min(1.9,h.ts+.12);h.glow=1.4;}
+    if(a.act==="shrink")h.ts=Math.max(.55,h.ts-.15);
+    if(a.act==="getDizzy")h.stun=1;
+    if(a.act==="dropThings")st.drop=a.e;
+    if(a.act==="sendChaser"&&!st.enemy)st.enemy={x:W-30,y:40,e:a.e};
+    if(a.act==="win")end("win");
+    if(a.act==="gameOver")end("lose");
+  }
   function poof(x,y,c){for(let k=0;k<10;k++){const a=Math.random()*6.28,v=rand(40,140);st.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,t:0,life:rand(.3,.6),c});}}
   function confetti(){for(let k=0;k<90;k++)st.parts.push({x:rand(0,W),y:rand(-60,0),vx:rand(-30,30),vy:rand(60,160),t:0,life:2.6,c:["#FF6B35","#FFD166","#5EE6B8","#FF7B7B"][k%4],sq:1});}
   function end(kind){
@@ -60,13 +80,14 @@ function Game(canvas){
   function hitHero(h,x,y){
     if(h.inv>0||st.over)return;
     h.inv=1.1;poof(x,y,"#FF7B7B");
-    if(sp.lives){st.lives--;st.pops.push({x:h.x,y:h.y-30,t:0,s:"-❤️",c:"#FF7B7B"});if(st.lives<=0){end("lose");return;}}
+    if(sp.lives){st.lives--;st.pops.push({x:h.x,y:h.y-30,t:0,s:"-❤️",c:"#FF7B7B"});if(st.lives<=0){end("lose");return;}fire("loseLife",h,x,y);}
+    fire("hit",h,x,y);
     if(sp.onHit==="stun")h.stun=1;
     if(sp.onHit==="shrink")h.ts=Math.max(.55,h.ts-.15);
     if(sp.onHit==="reset"){reset();st.pops.push({x:W/2,y:H/2,t:0,s:"START OVER!",c:"#FF7B7B"});}
   }
   function caught(h,o,byBullet){
-    poof(o.x,o.y,"#FFD166");
+    poof(o.x,o.y,"#FFD166");fire("catch",h,o.x,o.y);
     if(sp.coins){st.coins++;st.pops.push({x:o.x,y:o.y-14,t:0,s:"🪙",c:"#FFD166"});}
     const r=sp.onCatch;
     if(r==="score")addScore(h.i,1,o.x,o.y);
@@ -91,7 +112,7 @@ function Game(canvas){
       return;
     }
     st.alive+=dt;
-    const m=sp.mode,sm=sp.speedUp?1+st.t/30:1,spd=200*(sp.speed||1);
+    const m=sp.mode,sm=(sp.speedUp?1+st.t/30:1)*st.boost,spd=200*(sp.speed||1);
     for(const h of st.heroes){
       const c=ctrl(h.i);
       h.inv=Math.max(0,h.inv-dt);h.glow=Math.max(0,h.glow-dt);h.cd=Math.max(0,h.cd-dt);
@@ -130,9 +151,10 @@ function Game(canvas){
     if(m==="shoot"&&st.goods.length<5&&st.sg<=0){const l=Math.random()<.5;st.goods.push({x:l?-10:W+10,y:rand(40,150),vx:(l?1:-1)*rand(50,90)*sm,r:15,e:item.e,ph:Math.random()*6});st.sg=1.1/sm;}
     if(m==="dodge"&&st.sh<=0){st.hz.push({x:rand(16,W-16),y:-16,vy:rand(110,160)*sm,r:14,e:item.e,spin:rand(-3,3),a:0});st.sh=(sp.dense?.38:.7)/sm;}
     if(m==="jump"&&st.sh<=0){const big=sp.tall?1.5:1;st.hz.push({x:W+20,y:GROUND-14*big,vx:-170*sm,r:14*big,e:item.e,a:0,ground:1});st.sh=rand(1.2,2.1)/sm;}
-    if(sp.hazard&&st.sb<=0){
-      if(m==="jump")st.hz.push({x:W+20,y:GROUND-85,vx:-210*sm,r:13,e:sp.hazard,a:0});
-      else st.hz.push({x:rand(16,W-16),y:-16,vy:rand(100,140)*sm,r:13,e:sp.hazard,spin:rand(-2,2),a:0});
+    const drop=sp.hazard||st.drop;
+    if(drop&&st.sb<=0){
+      if(m==="jump")st.hz.push({x:W+20,y:GROUND-85,vx:-210*sm,r:13,e:drop,a:0});
+      else st.hz.push({x:rand(16,W-16),y:-16,vy:rand(100,140)*sm,r:13,e:drop,spin:rand(-2,2),a:0});
       st.sb=1.9/sm;
     }
     // move things

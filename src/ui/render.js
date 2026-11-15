@@ -3,8 +3,8 @@ import { getAssessmentView, getJournalEntries } from "../state/journal.js";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 
-export function createRenderer({ getProject, UI, botName, directions, chars, built, editableText, allProjects }) {
-  const templates = createTemplates({ getProject, UI, botName, directions, chars, built, editableText, allProjects,
+export function createRenderer({ getProject, UI, botName, directions, chars, built, editableText, allProjects, engineSource }) {
+  const templates = createTemplates({ getProject, UI, botName, directions, chars, built, editableText, allProjects, engineSource,
     journalEntries: () => getJournalEntries(getProject()), assessmentView: () => getAssessmentView(getProject(), UI) });
 
   function msgNode(m, anim) {
@@ -49,6 +49,7 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
     }
     if (exportButton) exportButton.disabled = !v;
     $("#assessment").innerHTML = templates.assessmentHTML();
+    renderCode();
     if (!v) {
       $("#paneTitle").textContent = "";
       $("#paneVer").textContent = "";
@@ -87,6 +88,15 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
     if(next){next.scrollLeft=UI.mapScrollLeft||0;next.scrollTop=UI.mapScrollTop||0;}
     return boardEl;
   }
+  /* the Play / Code switch in the game pane; the canvas keeps running while the code is shown */
+  function renderCode() {
+    const view = $("#codeView"), code = UI.paneTab === "code";
+    if (!view) return;
+    $("#pane").classList.toggle("code-on", code);
+    document.querySelectorAll("[data-pane-tab]").forEach(b => { const on = b.dataset.paneTab === (code ? "code" : "play"); b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
+    view.hidden = !code;
+    if (code) { const open = [...view.querySelectorAll("details")].map(d => d.open); view.innerHTML = templates.codeViewHTML(); view.querySelectorAll("details").forEach((d, i) => { if (open[i] !== undefined && d.classList.contains("code-all")) d.open = open[i]; }); }
+  }
   function renderEdges() { const layer = $("#mapEdges"); if (layer) layer.innerHTML = templates.edgesHTML(); }
   function makeCallout(info, more) {
     const co = document.createElement("div");
@@ -105,5 +115,5 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
     return m;
   }
   function renderBrand() { document.querySelectorAll("[data-bricks]").forEach(box => { box.innerHTML = LOGO; }); }
-  return { msgNode, scrollDown, showTyping, renderMsgs, renderJournal, renderLive, renderProjects, renderBar, renderPane, renderTabs, renderBoard, renderEdges, makeCallout, showAsk, createSheet, renderBrand };
+  return { msgNode, scrollDown, showTyping, renderMsgs, renderJournal, renderLive, renderProjects, renderBar, renderPane, renderTabs, renderBoard, renderEdges, renderCode, makeCallout, showAsk, createSheet, renderBrand };
 }
