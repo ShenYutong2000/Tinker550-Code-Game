@@ -22,11 +22,12 @@ test('design catalog retains every label, keyword, and suggestion', () => {
   const lenses = COLS.filter(({ key }) => key !== 'character');
   same(lenses, original.COLS);
   for (const { key } of original.COLS) same(COLMAP[key], original.COLMAP[key]);
-  for (const key of ['HEROES', 'ITEMS', 'WHY', 'COL_WORDS']) {
-    same({ HEROES, ITEMS, WHY, COL_WORDS }[key], original[key]);
-  }
+  for (const key of ['WHY', 'COL_WORDS']) same({ WHY, COL_WORDS }[key], original[key]);
+  /* onboarding examples add heroes, items and action words after the original ones, never in place of them */
+  same(HEROES.slice(0, original.HEROES.length), original.HEROES);
+  same(ITEMS.slice(0, original.ITEMS.length), original.ITEMS);
   for (const mode of Object.keys(MODES)) {
-    same(MODES[mode].k, original.MODES[mode].k);
+    same(MODES[mode].k.slice(0, original.MODES[mode].k.length), original.MODES[mode].k);
     same(MODES[mode].def, original.MODES[mode].def);
     for (const item of ['stars', 'cacti', 'fish']) {
       assert.equal(MODES[mode].obj(item), original.MODES[mode].obj(item));

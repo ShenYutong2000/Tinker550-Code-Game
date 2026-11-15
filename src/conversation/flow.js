@@ -1,11 +1,12 @@
-import { COLS, COLMAP, MODES } from "../design/catalog.js";
+import { COLS, COLMAP, MODES, FEELINGS } from "../design/catalog.js";
 import { sing, bestMatch, parseHero, parseAction } from "../design/parse.js";
 import { optionsFor, questionFor, STEMS, COL_WORDS } from "../design/options.js";
 import { analyzeDescription, readMechanism } from "../design/analyze.js";
-import { projectCharacters, isBuilt, buildProjectSpec, projectContext, updateAutomaticName } from "../state/project.js";
+import { buildDraft } from "../design/draft.js";
+import { projectCharacters, isBuilt, buildProjectSpec, projectContext, updateAutomaticName, pendingChanges } from "../state/project.js";
 import { saveBotName } from "../state/storage.js";
 import { createVersionJournal, savePlaytestAssessment } from "../state/journal.js";
-import { ensureStickerNode, linkMechanisms, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
+import { connectNotes, ensureStickerNode, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
 import { esc, GUIDE } from "../ui/templates.js";
 
 export function createConversation({ getProject, UI, renderer, render, renderBoard, renderPane, renderTabs, getBoardEl, autosave, game, botName, sheet, reduced }) {
@@ -51,14 +52,13 @@ function renderLive(animate){
 
 
 let onboardingOpen=false;
-function closeLens(){UI.lens=null;UI.linking=false;UI.linkFrom=null;UI.editing=null;}
 function guideTarget(key){
   if(key==="star")return document.querySelector(".pick");
   if(key==="predict")return document.querySelector(".gen-pick");
   if(key==="iterate"){const m=[...document.querySelectorAll("#msgs .msg.sprout")];return m[m.length-1]||null;}
   if(key==="boardintro")return document.querySelector("#boardColumn .column-head");
   if(!getBoardEl())return null;
-  if(key==="howto")return getBoardEl().querySelector(".lens-tile.has-new")||getBoardEl().querySelector(".lens-tile.used");
+  if(key==="howto")return getBoardEl().querySelector(".map-note");
   if(key==="gen")return getBoardEl().querySelector("#boardFoot .btn");
   return getBoardEl().querySelector(`[data-col="${key}"]`);
 }
@@ -69,9 +69,8 @@ function startTour(){
 function runOnboarding(){
   if(onboardingOpen||!UI.onboardQ.length||pumping)return;
   const key=UI.onboardQ[0];
-  let el=guideTarget(key);
+  const el=guideTarget(key);
   if(!el){if(key==="star"||key==="predict"||!getBoardEl())return;UI.onboardQ.shift();return runOnboarding();}
-  if(UI.lens&&el.closest(".board-column")){closeLens();renderer.renderBoard();el=guideTarget(key);if(!el)return;}   // board guides need the element window out of the way
   onboardingOpen=true;
   const info=GUIDE[key]||COLMAP[key];
   const inSheet=el.closest(".board-column");
@@ -105,81 +104,71 @@ function runOnboarding(){
 
 
 /* ---------- actions ---------- */
-function addSticker(col,text,sub,effect){
-  const s={id:uid(),col,text,sub,effect,status:"new",rot:rot(),pop:true};
+/* notes count as soon as they are on the map; "by" tells the child's own notes ("mine") from the buddy's draft */
+function addSticker(col,text,sub,effect,by="kid"){
+  const s={id:uid(),col,text,sub,effect,status:"ok",by,rot:rot(),pop:true};
   P.stickers.push(s);
   ensureStickerNode(P,s);
-  if(!P.seen.includes(col)&&!UI.onboardQ.includes(col))UI.onboardQ.push(col);
   return s;
 }
-function toConfirm(msg){say(msg);P.phase="confirm";
-  if(!P.seen.includes("howto")&&!UI.onboardQ.includes("howto"))UI.onboardQ.unshift("howto");
-  if(!P.seen.includes("boardintro")&&!UI.onboardQ.includes("boardintro"))UI.onboardQ.unshift("boardintro");
-  if(!P.seen.includes("gen")&&!UI.onboardQ.includes("gen"))UI.onboardQ.push("gen");
+function noteAdded(msg){say(msg);P.phase="confirm";
   if(innerWidth<=767)UI.tab="board";
   render();}
-function startGame(who,act,idea,told){
-  const h=parseHero(who),a=parseAction(act);
-  if(!told)say(`I want to make a game about <b>${esc(who)}</b> <b>${esc(act)}</b>`,"kid");
-  const cs=addSticker("character",h.e+" "+h.n,"The hero. It shows up on the canvas",{char:{e:h.e,n:h.n}});
-  P.activeChar=cs.id;
-  addSticker("objectives","“"+act+"”",MODES[a.mode].obj(a.item.n),{mode:a.mode,item:a.item});
-  const {added,linked}=addIdeaMechanisms(idea);
+/* onboarding: the answers become a first draft on all nine elements, and a first version you can play right away */
+function startDraft(who,act,feel,idea,told){
+  const h=parseHero(who),mood=FEELINGS.find(f=>f.k===feel);
+  if(!told)say(`<b>${esc(who)}</b> · <b>${esc(act)}</b>${mood?` · feels ${mood.ic} <b>${mood.t}</b>`:""}`,"kid");
+  const draft=buildDraft({who,act,feel,idea});
+  const made=draft.notes.map(n=>addSticker(n.col,n.text,n.sub,n.effect,n.by));
+  P.activeChar=made[0].id;
+  let linked=0;
+  for(const [from,to,label] of draft.links)if(connectNotes(P,made[from].id,made[to].id,label).result==="linked")linked++;
   autoName();
-  if(!added.length)say("Great idea! I turned it into two red notes: one for the character, one for the action.");
-  else{
-    const used=new Set(["character","objectives",...added.map(st=>st.col)]),names=COLS.filter(c=>used.has(c.key)).map(c=>"<b>"+c.en+"</b>");
-    say(`Great idea! I broke it into <b>${added.length+2} mechanisms</b> across ${names.length} elements: ${names.join(", ")}.`+(linked?` I linked ${linked} “when → then” ${linked>1?"pairs":"pair"} too.`:""));
-  }
-  const unsorted=idea?idea.unsorted:[];
-  if(unsorted.length)say(`I wasn't sure where ${unsorted.length>1?"these go":"this goes"}, so I left ${unsorted.length>1?"them":"it"} out for now: ${unsorted.map(u=>"“"+esc(u)+"”").join(", ")}. You can add ${unsorted.length>1?"them":"it"} later.`);
-  toConfirm(added.length?"Red means “not confirmed yet”. I'll open the board. Open each element with a red badge and tap its notes to turn them yellow. Only yellow notes count!"
-    :"Red means “not confirmed yet”. I'll open the board. Open <b>CHARACTERS</b> and <b>OBJECTIVES</b>, then tap each red note to turn it yellow. Only yellow notes count!");
+  const yours=made.filter(n=>n.by==="kid").length;
+  say(`✨ Here's a first draft of <b>${esc(P.name||"your game")}</b>! I put <b>${made.length} notes</b> on all nine elements and drew <b>${linked} arrows</b> to show what causes what.`);
+  if(draft.unsorted.length)say(`I wasn't sure where ${draft.unsorted.length>1?"these go":"this goes"}, so I left ${draft.unsorted.length>1?"them":"it"} out for now: ${draft.unsorted.map(u=>"“"+esc(u)+"”").join(", ")}. You can add ${draft.unsorted.length>1?"them":"it"} on the map.`);
+  say(`It's only a draft. <b>You're the designer!</b> ${yours} ${yours>1?"notes are":"note is"} your own words; the ones marked ✨ are my guesses. Play it, then change anything on the map.`);
+  buildVersion({news:[...P.stickers],guess:null,round:1,P:{}});
+  for(const key of ["boardintro","howto"])if(!P.seen.includes(key)&&!UI.onboardQ.includes(key))UI.onboardQ.push(key);
+  UI.fitMap=true;UI.feel=null;UI.idea=null;UI.ideaText="";
+  if(innerWidth<=767)UI.tab="board";
+  render();
 }
-/* the extra mechanisms from a description become red notes in their elements, keeping any "when → then" links */
-function addIdeaMechanisms(idea){
-  const added=[];let linked=0;
-  if(!idea)return {added,linked};
-  for(const m of idea.mechanisms){const r=readMechanism(m,ctx());added.push(addSticker(m.col,r.text,r.sub,r.effect));}
-  for(const [from,to] of idea.links)if(linkMechanisms(P,added[from].id,added[to].id)==="linked")linked++;
-  return {added,linked};
-}
+/* the three onboarding answers, plus the optional description when there is one */
 function doOpening(){
-  const who=$("#inWho").value.trim(),act=$("#inDo").value.trim();
-  if(!who||!act){say(who?"What is it doing? Write an action, like “catching stars”.":"First, tell me who the hero is, like “a cat”.");render();return;}
-  const idea=UI.idea;UI.idea=null;
-  startGame(who,act,idea);
+  const who=$("#inWho").value.trim(),act=$("#inDo").value.trim(),text=($("#inIdea")&&$("#inIdea").value||UI.ideaText||"").trim();
+  const idea=text?analyzeDescription(text):UI.idea;
+  const hero=who||idea&&idea.who,action=act||idea&&idea.act;
+  if(text)say(esc(text),"kid");
+  if(!hero||!action){
+    UI.idea=idea;UI.ideaText="";
+    say(hero?`What does the ${esc(parseHero(hero).n)} do? Pick one or write it in question 2.`:action?"Who is in your game? Pick one or write it in question 1.":"First, tell me who is in your game and what they do.");
+    render();return;}
+  startDraft(hero,action,UI.feel,idea,!!text);
 }
-/* a free description: pull out the hero, the action and the extra mechanisms, then ask only for what is missing */
+/* a description typed into the chat box: fill in what it says, then ask only for what is missing */
 function describe(t){
   t=t.trim();
-  if(!t){say("Write a few sentences about your game first, or start with <b>who</b> and <b>doing what</b> below.");render();return;}
+  if(!t){say("Answer the three questions, or tell me your game idea in a few sentences.");render();return;}
   const idea=analyzeDescription(t);UI.ideaText="";
-  if(idea.who&&idea.act&&!idea.mechanisms.length&&!idea.unsorted.length){startGame(idea.who,idea.act);return;}
   say(esc(t),"kid");
-  if(idea.who&&idea.act){startGame(idea.who,idea.act,idea,true);return;}
+  if(idea.who&&idea.act){startDraft(idea.who,idea.act,UI.feel,idea,true);return;}
   UI.idea=idea;
-  const more=idea.mechanisms.length?" Then I'll add the rest of your idea.":"";
-  say((!idea.who&&!idea.act?"Sounds fun! Can you tell me two things below? Who is the hero, and what is it doing?"
-    :idea.who?`I love it! What is the ${esc(parseHero(idea.who).n)} doing? Write it below, like “catching stars”.`
-    :"I love it! Who is the hero? Write it below, like “a cat”.")+more);
+  say((!idea.who&&!idea.act?"Sounds fun! Now answer questions 1 and 2 below: who is in your game, and what do they do?"
+    :idea.who?`I love it! What does the ${esc(parseHero(idea.who).n)} do? Answer question 2 below.`
+    :"I love it! Who is in your game? Answer question 1 below.")+(idea.mechanisms.length?" Then I'll add the rest of your idea.":""));
   render();
 }
-function doNewChar(name){
-  if(!name){say("What's the new character called?");render();return;}
-  const h=parseHero(name);
-  say(`Add another character: <b>${esc(name)}</b>`,"kid");
-  addSticker("character",h.e+" "+h.n,"New character",{char:{e:h.e,n:h.n}});
-  toConfirm("New character added! Once you confirm it, it shows up on the canvas too. Want to play with a friend? In <b>Players</b>, pick team up or race, and Player 2 will control it.");
+/* "＋" on an element's cluster: the child's note goes straight onto the map */
+function addNote(col,text){
+  text=String(text||"").trim().replace(/\s+/g," ");if(!text)return null;
+  let s;
+  if(col==="character"){const h=parseHero(text);s=addSticker(col,h.e+" "+h.n,"New character",{char:{e:h.e,n:h.n}});}
+  else{const r=readMechanism({col,text},ctx());s=addSticker(col,r.text,r.sub,r.effect);}
+  autoName();render();autosave();
+  return s;
 }
-function confirmSticker(id){
-  const s=P.stickers.find(x=>x.id===id);if(!s||s.status!=="new")return;
-  s.status="ok";s.pop=true;
-  setStickerNodeStatus(P,id,"confirmed");
-  if(!P.stickers.some(x=>x.status==="new")){say(P.versions.length?"All confirmed! Tap “Make my game!” to see your new rules in action.":(P.stickers.length===2?"Both":"All")+" confirmed! Now you can make your game.");}
-  render();
-}
-/* a sticker can be rewritten before or after confirming; rewriting turns it red again */
+/* rewriting a note makes it the child's own; the game picks it up on the next update */
 function editableText(s){return s.col==="character"?s.text.replace(/^\S+\s/,""):s.text.replace(/^“(.*)”$/,"$1");}
 function reinterpret(s,t){
   if(s.col==="character"){const h=parseHero(t);s.text=h.e+" "+h.n;s.effect={char:{e:h.e,n:h.n}};return;}
@@ -200,10 +189,10 @@ function saveEdit(id){
     const previousId=s.id;
     reinterpret(s,t);
     const old=s.id;s.id=uid();if(P.activeChar===old)P.activeChar=s.id;   // new id so the board treats it as a change to rebuild
-    s.status="new";s.pop=true;P.phase="confirm";
+    s.status="ok";s.by="kid";s.pop=true;if(built(old))s.replaces=old;
     ensureStickerNode(P,s,previousId);
-    setStickerNodeStatus(P,s.id,"idea");
-    say(`Updated: “${esc(editableText(s))}”. It's red again, so confirm it to make it count.`);
+    if(UI.focus&&UI.focus.note===previousId)UI.focus={note:s.id};
+    autoName();
   }
   render();autosave();
 }
@@ -214,8 +203,8 @@ function delSticker(id){
   P.stickers.splice(i,1);
   removeStickerNode(P,id);
   if(P.activeChar===id){const c=chars()[0];P.activeChar=c?c.id:null;}
-  if(!P.stickers.some(x=>x.status==="new")&&!P.stickers.some(x=>x.status==="ok"&&!built(x.id)))P.phase=P.versions.length?"directions":"confirm";
-  render();
+  if(UI.focus&&UI.focus.note===id)UI.focus=null;
+  render();autosave();
 }
 function setComposer(v){const ta=$("#composer");ta.value=v;autosize();}
 function pickDirection(col,silent){
@@ -232,7 +221,7 @@ function pickOption(i){
   setComposer("");
   say(esc(c.stem)+esc(o.t.replace(/^.*?: /,"")),"kid");
   addSticker(c.col,o.t,null,o.e);
-  toConfirm(`I added a red note to <b>${COLMAP[c.col].en}</b>. Once you confirm it, you can make a new version.`);
+  noteAdded(`I added a note to <b>${COLMAP[c.col].en}</b> on the map. Tap “Update my game” to try it.`);
 }
 function matchFree(t,quiet){
   const c=UI.choice,body=t.startsWith(c.stem)?t.slice(c.stem.length):t;
@@ -240,9 +229,9 @@ function matchFree(t,quiet){
   {const m=bestMatch(body,c.options,ctx());best=m.best;score=m.score;}
   if(!quiet)say(esc(t),"kid");
   if(score>=1){const o=c.options[best];addSticker(c.col,t,"I read it as: "+o.t,o.e);
-    toConfirm(`I read it as “${esc(o.t)}” and made a red note. If that's not right, tap ✏️ Edit.`);}
+    noteAdded(`I read it as “${esc(o.t)}” and added a note to <b>${COLMAP[c.col].en}</b>. If that's not right, tap the note and ✏️ edit it.`);}
   else{addSticker(c.col,t,"This prototype can't build this one yet",null);
-    toConfirm("Cool idea! I can't build that one yet, though. I'll stick it on the board. Once you confirm it, it stays in your design, but the game won't change for now.");}
+    noteAdded("Cool idea! I can't build that one yet, though. I put it on the map so it stays in your design, but the game won't change for now.");}
 }
 function promptText(t){
   const col=Object.keys(COL_WORDS).find(k=>COL_WORDS[k].some(w=>t.toLowerCase().includes(w)));
@@ -255,17 +244,16 @@ function nameBot(t){
   if(!n)return;
   say(esc(n),"kid");P.botName=n;saveBotName(n);
   say(`${esc(n)}! I love that name. From now on, I'm <b>${esc(n)}</b>.`);
-  say("Today we'll make a game you can really play. First, tell me: <b>who</b> is the hero, and what is it <b>doing</b>?");
+  say("Today we'll make a game you can really play. Answer three quick questions below, and I'll sketch a first draft for you to change.");
   P.phase="opening";render();
 }
 function send(){
   const ta=$("#composer"),t=ta.value.trim();if(!t||ta.disabled)return;
   if(P.phase==="naming"){setComposer("");nameBot(t);}
   else if(P.phase==="opening"){setComposer("");describe(t);}
-  else if(P.phase==="newchar"){setComposer("");doNewChar(t);}
   else if(P.phase==="choice"){if(t===UI.choice.stem.trim())return;setComposer("");matchFree(t);}
   else if(P.phase==="playtest"){setComposer("");feelReply(t);}
-  else if(P.phase==="directions"||P.phase==="concept"){setComposer("");UI.ownText=t;UI.sel=null;pickGo();}
+  else if(["directions","concept","confirm"].includes(P.phase)){setComposer("");UI.ownText=t;UI.sel=null;pickGo();}
 }
 function autosize(){const ta=$("#composer");ta.style.height="auto";ta.style.height=Math.min(140,ta.scrollHeight)+"px";}
 
@@ -302,22 +290,24 @@ function guessLabel(o,c){const e=o.e||{},h="the "+c.hero.n,it="the "+sing(c.item
 function predictionFor(news,c){
   const lit=new Set(P.stickers.filter(s=>s.status==="ok").map(s=>s.col));
   const last=news[news.length-1];
+  if(!last)return {q:`You took something off the map. What will be different when you play?`,a:CHANGE_GUESSES};
   const src=last.col==="objectives"&&last.effect&&!last.effect.mode?"objectives2":last.col;
   let col=(RELATED[src]||[]).find(k=>!lit.has(k));
   if(!col)col=["rules","outcome","conflict","resources","boundaries","procedures","objectives","players"].find(k=>!lit.has(k));
-  if(!col)return {q:`After this change, the ${c.hero.n}'s game will feel…`,a:[{pic:"🔥",t:"more fun"},{pic:"🤔",t:"about the same"}]};
+  if(!col)return {q:`You changed “${last.text.replace(/[“”]/g,"")}”. What will be different when you play?`,a:CHANGE_GUESSES};
   const raw=last.text.replace(/[“”]/g,"");
   const t=raw.length>24?({rules:"this new rule",conflict:"the new challenge",resources:"the new resource",procedures:"the new controls",boundaries:"the new edges",outcome:"the new ending",players:"the new way to play",character:"the new character",objectives:"the new goal"})[last.col]||"this new idea":raw;
   return {gap:col,q:gapQuestion(col,c,t),a:optionsFor(col,c).map((o,i)=>({pic:o.pic,t:guessLabel(o,c),idx:i})).slice(0,3)};
 }
 
 
+const CHANGE_GUESSES=[{pic:"😬",t:"it gets harder"},{pic:"😌",t:"it gets easier"},{pic:"✨",t:"something new shows up"}];
+
 function generate(){
-  if(P.phase==="generating")return;
-  const news=P.stickers.filter(s=>s.status==="ok"&&!built(s.id));
-  if(!news.length||P.stickers.some(s=>s.status==="new"))return;
+  if(P.phase==="generating"||!pendingChanges(P))return;
+  const news=P.stickers.filter(s=>!built(s.id));
   const c=ctx(),Pq=predictionFor(news,c),round=P.versions.length+1;
-  const lines=["Turning yellow notes into rules…",`Putting the ${c.hero.n} on the canvas…`,"Adding a breathing animation…","Hooking up the keyboard and mouse…","Checking edges and bumps…"];
+  const lines=["Turning your map into rules…",`Putting the ${c.hero.n} on the canvas…`,"Adding a breathing animation…","Hooking up the keyboard and mouse…","Checking edges and bumps…"];
   UI.gen={P:Pq,round,news,picked:null,done:false,status:lines[0]};
   P.phase="generating";UI.tab="create";
   say(P.versions.length?"Let's change your game! Quick quiz:":"Let's make your game! Quick quiz:");
@@ -336,17 +326,23 @@ function generate(){
 function finishGen(){
   const g=UI.gen;if(!g||!g.done)return;UI.gen=null;
   if(generationTimer){clearInterval(generationTimer);generationTimer=null;}
+  buildVersion(g);
+  render();autosave();
+}
+/* everything on the map goes into the new version, including the first draft, which skips the guessing quiz */
+function buildVersion(g){
   const first=g.round===1;
-  g.news.forEach(s=>{P.lastBuilt.push(s.id);setStickerNodeStatus(P,s.id,"built");});
+  P.lastBuilt=P.stickers.map(s=>s.id);
+  P.stickers.forEach(s=>{delete s.replaces;});
+  P.stickers.forEach(s=>setStickerNodeStatus(P,s.id,"built"));
   const spec=buildSpec(false);
   const items=P.stickers.filter(s=>s.status==="ok"&&s.effect&&s.col!=="character").map(s=>s.text);
   P.versions.push({n:g.round,spec,items,summary:g.news.map(s=>s.text).join(" · "),journal:createVersionJournal(g.news,g.guess),snapshot:JSON.parse(JSON.stringify({stickers:P.stickers,activeChar:P.activeChar,lastBuilt:P.lastBuilt,designMap:P.designMap}))});
   const guess=g.guess!==undefined?g.guess:null;
-  P.prediction=g.P.gap?{round:g.round,gap:g.P.gap,idx:g.picked!==null?g.P.a[g.picked].idx:null,guess}:null;
+  P.prediction=g.P.gap?{round:g.round,gap:g.P.gap,idx:g.picked!==null?g.P.a[g.picked].idx:null,guess}:guess?{round:g.round,gap:null,idx:null,guess}:null;
   P.phase="playtest";P.feel=null;P.found=null;UI.explained=null;UI.paneOpen=false;UI.tab="create";UI.firstOpen=first;UI.pendingSpec=null;UI.asked=false;clearTimeout(UI.askTimer);
   game.load(spec);
-  say(guess?`Got it! ${first?"Your game is ready":"Your game is updated"}. Go play and see if you guessed right.`:(first?"Done 🎉 Tap the card below to play.":"Updated! Tap the card below to play the new version."));
-  render();autosave();
+  say(guess?`Got it! ${first?"Your game is ready":"Your game is updated"}. Go play and see if you guessed right.`:(first?"Your first draft is playable 🎉 Tap the card below to try it.":"Updated! Tap the card below to play the new version."));
 }
 /* picking an idea: a card only gets highlighted; "This one!" (or a typed idea) moves on */
 const CONCEPT={
@@ -365,7 +361,7 @@ function pickGo(){
   if(!typed&&UI.sel==="guess"&&pr&&pr.guess){
     UI.sel=null;say(`Put “${esc(pr.guess)}” into the game!`,"kid");
     pickDirection(pr.gap,true);
-    if(pr.idx!==null){const o=UI.choice.options[pr.idx];addSticker(pr.gap,o.t,null,o.e);toConfirm("Done! Confirm it, and the next version will work like this.");}
+    if(pr.idx!==null){const o=UI.choice.options[pr.idx];addSticker(pr.gap,o.t,null,o.e);noteAdded("Done! It's on the map. Tap “Update my game”, and the next version will work like this.");}
     else matchFree(pr.guess,true);
     return;}
   if(typed){col=Object.keys(COL_WORDS).find(k=>COL_WORDS[k].some(w=>typed.toLowerCase().includes(w)));text=typed;say(esc(typed),"kid");
@@ -419,7 +415,7 @@ function feelReply(t){
   const lit=new Set(P.stickers.filter(s=>s.status==="ok").map(s=>s.col)),pr=P.prediction;
   const f=FEELS.find(x=>x.re.test(t));P.feel=f?f.k:null;
   let col=null,why;
-  if(pr&&pr.guess&&!lit.has(pr.gap)){
+  if(pr&&pr.guess&&pr.gap&&!lit.has(pr.gap)){
     // the guess didn't happen: say why, then name the concept
     col=pr.gap;
     const o=P.stickers.find(s=>s.col==="objectives"&&s.effect&&s.effect.mode),act=o?o.text.replace(/[“”]/g,""):"this game";
@@ -435,7 +431,7 @@ function feelReply(t){
   const rest=()=>{
   if(why)say(why);
   if(col){const [what,impact]=CONCEPT[col];say(`In games, this is called <b>${COLMAP[col].zh}</b>. ${what} ${impact}`);UI.explained=col;}
-  say(pr&&pr.guess&&col===pr.gap?`Want to really put your guess, “${esc(pr.guess)}”, into the game? Or check out other ideas:`:"I've got a few ideas. Want to try one?");
+  say(pr&&pr.guess&&pr.gap&&col===pr.gap?`Want to really put your guess, “${esc(pr.guess)}”, into the game? Or check out other ideas:`:"I've got a few ideas. Want to try one?");
   UI.sel=null;UI.ownText="";P.phase="directions";render();autosave();};
   // first round only: right after the reaction, the "iterating is normal" callout; the robot carries on once it's closed
   if(!P.seen.includes("iterate")&&!UI.onboardQ.includes("iterate")){UI.afterIterate=rest;UI.onboardQ.push("iterate");P.phase="reacting";render();}
@@ -462,7 +458,7 @@ function directions(){
 function greet(){
   if(!P.botName){P.phase="naming";say("Hi! I'm your game design robot buddy.");say("But I don't have a name yet. What do you want to call me? Type a name below!");return;}
   say(`Hi! I'm <b>${esc(P.botName)}</b>, your game design buddy.`);
-  say("Today we'll make a game you can really play. First, tell me: <b>who</b> is the hero, and what is it <b>doing</b>?");
+  say("Today we'll make a game you can really play. Answer three quick questions below, and I'll sketch a first draft for you to change.");
 }
 function renameBot(){
   const m=sheet("Rename your buddy","The new name works right away",`<input class="name-in" id="botIn" maxlength="14" value="${esc(botName())}" aria-label="Robot's name"><div class="row"><button class="btn" id="botOk">That's it!</button></div>`);
@@ -471,24 +467,9 @@ function renameBot(){
   m.querySelector("#botOk").onclick=ok;i.addEventListener("keydown",e=>{if(e.key==="Enter")ok();});
 }
 
-function beginAddCharacter(){
-  if(P.phase==="generating")return;
-  closeLens();
-  renderBoard();
-  say("I want to add another character","kid");
-  say("OK! Who is the new character?");
-  P.phase="newchar";UI.tab="create";render();$("#composer").focus();
-}
-/* "＋ Add a mechanism" in an element window asks the same question as picking that element after playtesting */
-function addMechanism(col){
-  if(pumping||!["directions","concept","choice"].includes(P.phase)){
-    say(P.versions.length?"Let's finish this round first. Then you can add more to it.":"Let's make your first version first. Then you can add more mechanisms.");render();return;}
-  closeLens();
-  UI.tab="create";UI.ownText="";UI.sel=col;P.phase="directions";pickGo();
-}
 function cancelChoice(){
   setComposer("");
-  P.phase=P.versions.length?(P.stickers.some(s=>s.status==="new"||(s.status==="ok"&&!built(s.id)))?"confirm":"directions"):(chars().length?"confirm":"opening");
+  P.phase=P.versions.length?(pendingChanges(P)?"confirm":"directions"):"opening";
   render();
 }
 function resetProject(project){
@@ -504,10 +485,10 @@ function resetProject(project){
 }
 return {
   say, renderLive, runOnboarding, startTour, doOpening, describe, send, autosize,
-  confirmSticker, saveEdit, delSticker, pickOption, submitGuess,
+  saveEdit, delSticker, pickOption, submitGuess,
   generate, finishGen, pickGo, conceptDesign, conceptOther, openPane,
   clearAsk, directions, editableText, setComposer, greet, renameBot,
-  beginAddCharacter, addMechanism, cancelChoice, resetProject,
+  addNote, cancelChoice, resetProject,
   isPumping:()=>pumping, isOnboardingOpen:()=>onboardingOpen
 };
 }

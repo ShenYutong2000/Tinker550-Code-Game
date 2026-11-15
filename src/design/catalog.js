@@ -17,19 +17,26 @@ export const HEROES=[
   {k:["火箭","rocket","ship"],e:"🚀",n:"rocket"},{k:["鱼","fish"],e:"🐟",n:"fish"},{k:["兔","rabbit","bunny"],e:"🐰",n:"bunny"},
   {k:["恐龙","dino"],e:"🦖",n:"dinosaur"},{k:["企鹅","penguin"],e:"🐧",n:"penguin"},{k:["熊猫","panda"],e:"🐼",n:"panda"},
   {k:["青蛙","frog"],e:"🐸",n:"frog"},{k:["外星","alien"],e:"👽",n:"alien"},{k:["鸡","鸟","chick","bird"],e:"🐥",n:"chick"},
-  {k:["章鱼","octopus"],e:"🐙",n:"octopus"},{k:["狐狸","fox"],e:"🦊",n:"fox"}
+  {k:["章鱼","octopus"],e:"🐙",n:"octopus"},{k:["狐狸","fox"],e:"🦊",n:"fox"},
+  {k:["宇航员","astronaut","spaceman"],e:"🧑‍🚀",n:"astronaut"},{k:["超级英雄","superhero"],e:"🦸",n:"superhero"}
 ];
 export const ITEMS=[
   {k:["星","star"],e:"⭐",n:"stars"},{k:["苹果","apple"],e:"🍎",n:"apples"},{k:["金币","coin","money"],e:"🪙",n:"coins"},
   {k:["鱼","fish"],e:"🐟",n:"fish"},{k:["糖","candy","sweet"],e:"🍬",n:"candy"},{k:["蛋糕","cake"],e:"🍰",n:"cakes"},
   {k:["宝石","gem","diamond","jewel"],e:"💎",n:"gems"},{k:["泡泡","bubble"],e:"🫧",n:"bubbles"},{k:["气球","balloon"],e:"🎈",n:"balloons"},
   {k:["陨石","meteor","rock","asteroid"],e:"☄️",n:"meteors"},{k:["仙人掌","cactus","cacti"],e:"🌵",n:"cacti"},{k:["箱","box"],e:"📦",n:"boxes"},
-  {k:["胡萝卜","carrot"],e:"🥕",n:"carrots"},{k:["骨头","bone"],e:"🦴",n:"bones"},{k:["雪花","snow"],e:"❄️",n:"snowflakes"}
+  {k:["胡萝卜","carrot"],e:"🥕",n:"carrots"},{k:["骨头","bone"],e:"🦴",n:"bones"},{k:["雪花","snow"],e:"❄️",n:"snowflakes"},
+  {k:["怪兽","怪物","monster"],e:"👹",n:"monsters"},{k:["障碍","obstacle"],e:"🧱",n:"obstacles"}
+];
+/* how the player should feel steers the first draft; see design/draft.js */
+export const FEELINGS=[
+  {k:"excited",ic:"🤩",t:"excited"},{k:"challenged",ic:"💪",t:"challenged"},{k:"curious",ic:"🔍",t:"curious"},
+  {k:"relaxed",ic:"😌",t:"relaxed"},{k:"surprised",ic:"😲",t:"surprised"}
 ];
 export const MODES={
-  dodge:{k:["躲","dodg","avoid","escape"],def:{e:"☄️",n:"meteors"},obj:n=>"dodge the falling "+n},
+  dodge:{k:["躲","dodg","avoid","escape","escap"],def:{e:"☄️",n:"meteors"},obj:n=>"dodge the falling "+n},
   jump:{k:["跳","jump","hop","leap"],def:{e:"🌵",n:"cacti"},obj:n=>"jump over the "+n},
   shoot:{k:["射","打","shoot","fire","blast","pop"],def:{e:"🎈",n:"balloons"},obj:n=>"shoot bubbles to pop the "+n},
   catch:{k:["接","抓","收集","吃","catch","collect","eat","grab"],def:{e:"⭐",n:"stars"},obj:n=>"catch the falling "+n},
-  roam:{k:["游","飞","走","swim","fly","explore","walk","run","move","find"],def:{e:"💎",n:"gems"},obj:n=>"explore and find "+n}
+  roam:{k:["游","飞","走","swim","fly","explore","walk","run","move","find","explor"],def:{e:"💎",n:"gems"},obj:n=>"explore and find "+n}
 };

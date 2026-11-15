@@ -24,6 +24,8 @@ function migrateDesignMap(project, savedMap){
 export function restoreProject(saved, botName){
   const project=Object.assign(createProject(botName),JSON.parse(JSON.stringify(saved)));
   project.saved=project.saved||[];
+  /* the confirm step is gone: notes that were still waiting to be confirmed are simply on the map now */
+  project.stickers=(project.stickers||[]).map(sticker=>sticker.status==="new"?{...sticker,status:"ok"}:sticker);
   project.designMap=migrateDesignMap(project,saved.designMap);
   syncStickerNodes(project);
   if(["generating","choice","newchar"].includes(project.phase))project.phase=project.versions.length?"directions":(project.stickers.length?"confirm":"opening");
@@ -31,11 +33,17 @@ export function restoreProject(saved, botName){
 }
 
 export function createUIState(viewportWidth){
-  return {expanded:new Set(),editing:null,lens:null,linking:false,linkFrom:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
+  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
 }
 
 export const projectCharacters=project=>project.stickers.filter(sticker=>sticker.col==="character");
 export const isBuilt=(project,id)=>project.lastBuilt.includes(id);
+/* changes on the map that the game doesn't have yet: new or rewritten notes, and built notes that were removed
+   (a rewritten note gets a new id and remembers the one it replaces, so one rewrite counts once) */
+export function pendingChanges(project){
+  const ids=new Set(project.stickers.map(sticker=>sticker.id)),replaced=new Set(project.stickers.map(sticker=>sticker.replaces).filter(Boolean));
+  return project.stickers.filter(sticker=>!project.lastBuilt.includes(sticker.id)).length+project.lastBuilt.filter(id=>!ids.has(id)&&!replaced.has(id)).length;
+}
 
 export function buildProjectSpec(project,includeNew){
   const spec={speed:1};

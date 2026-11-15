@@ -19,19 +19,19 @@ flowchart LR
 
 ## 模块职责
 
-- `index.html` 保留页面静态容器和 Vite 入口；中间 Design Map 是常驻主工作区，只显示九个设计元素方块，点击方块打开该元素的机制窗口，左右 Journal 与 Preview 可独立收起；`src/styles/` 管理三列与手机底部导航布局。
+- `index.html` 保留页面静态容器和 Vite 入口；中间 Design Map 是常驻主工作区：九个设计元素是同一画布上可拖动、可收起的区块，便签之间用带标签的箭头连接，选中便签时右侧面板显示其连接和受影响的便签，左右 Journal 与 Preview 可独立收起；`src/styles/` 管理三列与手机底部导航布局。
 - `src/app.js` 创建项目状态、界面状态、Canvas 引擎和各模块，负责项目切换、撤销、保存与导出。项目对象 `P` 会在加载或新建时替换，依赖方通过 `getProject()` 读取当前对象。
-- `src/conversation/flow.js` 管理消息队列、设计地图引导、便签确认、预测、生成、试玩反馈和迭代。切换项目时 `resetProject()` 清除未显示的旧消息、生成定时器和旧引导；生成版本时保存本轮设计要点，收到试玩反馈时写入该版本的评估记录。
-- `src/events/bind.js` 把现有 `data-*` 属性、鼠标/触摸指针、键盘与输入事件连接到流程、地图状态和渲染，包括打开/关闭元素窗口和连接、取消连接机制；新增地图操作时，同时检查模板属性、状态操作与这里的事件分支。
+- `src/conversation/flow.js` 管理消息队列、三问开场与第一版草稿、设计地图引导、地图上的增删改、预测、生成、试玩反馈和迭代。第一版草稿生成后立即构建 `v1`，不经过预测问答；之后每次 `Update my game` 都会先预测再生成。切换项目时 `resetProject()` 清除未显示的旧消息、生成定时器和旧引导；生成版本时保存本轮设计要点，收到试玩反馈时写入该版本的评估记录。
+- `src/events/bind.js` 把现有 `data-*` 属性、鼠标/触摸指针、键盘与输入事件连接到流程、地图状态和渲染，包括选中与高亮、连接与修改连接标签、拖动区块与便签、平移和缩放；拖动只有在移动超过几个像素后才开始，否则视为点击；新增地图操作时，同时检查模板属性、状态操作与这里的事件分支。
 - `src/ui/templates.js` 提供现有 HTML 模板与展示文案；`src/ui/render.js` 把当前项目和 UI 状态映射到 DOM，包括常驻设计地图、Journal 与 Preview 的独立显隐状态。流程决定**何时**渲染，渲染模块决定**如何**呈现。
-- `src/design/` 存放设计词库、文本解析和建议选项；`analyze.js` 在本地把开场的自由描述拆成角色、主要动作和按元素分类的机制（含同一元素内的 “when → then” 连接），返回固定结构，将来可替换为 AI 模型；`src/state/project.js` 生成项目状态与游戏配置；`src/state/design-map.js` 同步游戏便签状态，管理同一元素内机制之间的连接，并为元素窗口计算链条与独立机制的布局；`src/state/journal.js` 生成 Journal/Assessment 展示数据，并把试玩反思保存到版本；`src/state/storage.js` 集中处理浏览器存储。
+- `src/design/` 存放设计词库、文本解析和建议选项；`analyze.js` 在本地把开场的自由描述拆成角色、主要动作和按元素分类的机制；`draft.js` 根据三个开场回答和描述生成覆盖九个元素的第一版草稿及默认连接，孩子自己的描述优先于默认值。两者都返回固定结构，将来可替换为 AI 模型；`src/state/project.js` 生成项目状态与游戏配置；`src/state/design-map.js` 同步游戏便签状态，管理便签之间带标签的连接，计算画布布局、选中时的高亮集合（直接相连与后续受影响的便签），并保存区块位置与收起状态；`src/state/journal.js` 生成 Journal/Assessment 展示数据，并把试玩反思保存到版本；`src/state/storage.js` 集中处理浏览器存储。
 - `src/game/engine.js` 是试玩引擎。`src/game/export.js` 使用 Vite 的 `?raw` 导入同一份引擎源码，生成可独立运行的游戏 HTML。
 
 ## 状态与兼容性
 
 项目数据保存在 `tinkercade.projects.v6`，机器人名称保存在 `tinkercade.bot.v6`。项目包含 `stickers`、`chat`、`versions`、`lastBuilt`、`prediction` 等字段。`versions` 中的 `spec` 用于 Canvas，`snapshot` 用于撤销；新增的可选 `journal` 记录该版本的设计便签与预测，`assessment` 记录孩子试玩后的原话、感受和发现。Journal 从版本记录生成，旧版本缺少这些可选字段时会退回使用 `summary`、`items` 和项目中的匹配轮次预测，因此不会要求清除或重写旧 `v6` 存档。`UI` 是当前页面的临时状态，不写入项目 JSON；左右栏显隐和手机当前标签仅保存在内存中。
 
-已有项目继续使用 `tinkercade.projects.v6` 和 `tinkercade.bot.v6` 键名。恢复项目时，`src/state/project.js` 为缺少 `designMap` 的旧条目从现有便签生成初始卡片，并保留游戏配置所需的原始字段。`designMap` 是附加字段，包含游戏便签节点和 `edges` 连接。每条连接表示同一设计元素中“先发生 → 接着发生”的两个机制，不能跨元素、自连、重复或成环；编辑便签时节点 id 保持不变，所以连接会保留，删除便签时相关连接一并移除。关联游戏便签的状态为 `idea`、`confirmed`、`built`。连接目前只是设计记录，不进入 `buildProjectSpec()` 生成的游戏规则。旧存档中的自由规划便签仍原样保存，但不再显示在地图上。
+已有项目继续使用 `tinkercade.projects.v6` 和 `tinkercade.bot.v6` 键名。恢复项目时，`src/state/project.js` 为缺少 `designMap` 的旧条目从现有便签生成初始卡片，并保留游戏配置所需的原始字段。`designMap` 是附加字段，包含游戏便签节点、`edges` 连接和可选的 `clusters`（各元素区块的位置与收起状态）。连接可以在同一元素内或跨元素，带 `label`（`then`、`uses`、`controls`、`ends`），不能自连或重复；没有 `label` 的旧连接按 `then` 显示。编辑便签时节点 id 保持不变，所以连接会保留，删除便签时相关连接一并移除。便签新增可选字段 `by`（`ai` 为草稿，`kid` 为孩子的想法）和 `replaces`（改写前已构建的便签 id，用于把一次改写只算作一处待更新改动）。确认步骤已取消：恢复项目时，旧存档中 `status: "new"` 的便签改为 `ok`。连接目前只是设计记录，不进入 `buildProjectSpec()` 生成的游戏规则。旧存档中的自由规划便签仍原样保存，但不再显示在地图上。
 
 修改存储结构前，应先增加旧数据兼容测试，并在项目模块中实现迁移或兼容读取。不要更改 `v6` 键名，也不要让地图布局数据进入 `buildProjectSpec()` 生成的游戏规则。
 

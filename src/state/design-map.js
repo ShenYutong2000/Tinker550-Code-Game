@@ -1,3 +1,5 @@
+import { COLS } from "../design/catalog.js";
+
 let nextMapId = 0;
 const nextId = () => `link-${Date.now().toString(36)}-${(++nextMapId).toString(36)}`;
 
@@ -61,66 +63,124 @@ function stickerNodeId(project, stickerId) {
   return project.designMap.nodes.find(node => node.stickerId === stickerId)?.id;
 }
 
-function reaches(edges, from, to) {
-  const seen = new Set(), stack = [from];
-  while (stack.length) {
-    const id = stack.pop();
-    if (id === to) return true;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    for (const edge of edges) if (edge.from === id) stack.push(edge.to);
-  }
-  return false;
+/* how one note relates to another; older links without a label read as "if → then" */
+export const LINK_LABELS = { then: "if → then", uses: "uses", controls: "controls", ends: "ends when" };
+export function inferLabel(fromCol, toCol) {
+  if (toCol === "outcome") return "ends";
+  if (fromCol === "procedures" && toCol === "character") return "controls";
+  if (toCol === "resources" || toCol === "procedures") return "uses";
+  return "then";
 }
 
-/* a link says "when the first mechanism happens, then the second one does"; links stay inside one element */
-export function linkMechanisms(project, fromStickerId, toStickerId) {
-  if (!fromStickerId || !toStickerId || fromStickerId === toStickerId) return "self";
+/* links may join any two notes, inside one element or across elements */
+export function connectNotes(project, fromStickerId, toStickerId, label) {
+  if (!fromStickerId || !toStickerId || fromStickerId === toStickerId) return { result: "self" };
   const first = project.stickers.find(sticker => sticker.id === fromStickerId), second = project.stickers.find(sticker => sticker.id === toStickerId);
   const from = stickerNodeId(project, fromStickerId), to = stickerNodeId(project, toStickerId);
-  if (!first || !second || !from || !to) return "missing";
-  if (first.col !== second.col) return "other-element";
+  if (!first || !second || !from || !to) return { result: "missing" };
   const edges = project.designMap.edges;
-  if (edges.some(edge => (edge.from === from && edge.to === to) || (edge.from === to && edge.to === from))) return "duplicate";
-  if (reaches(edges, to, from)) return "loop";
-  edges.push({ id: nextId(), from, to });
-  return "linked";
+  if (edges.some(edge => (edge.from === from && edge.to === to) || (edge.from === to && edge.to === from))) return { result: "duplicate" };
+  const edge = { id: nextId(), from, to, label: LINK_LABELS[label] ? label : inferLabel(first.col, second.col) };
+  edges.push(edge);
+  return { result: "linked", edge };
 }
 
-export function unlinkMechanisms(project, edgeId) {
+export function setLinkLabel(project, edgeId, label) {
+  const edge = project.designMap.edges.find(item => item.id === edgeId);
+  if (!edge || !LINK_LABELS[label]) return false;
+  edge.label = label;
+  return true;
+}
+
+export function unlinkNotes(project, edgeId) {
   const before = project.designMap.edges.length;
   project.designMap.edges = project.designMap.edges.filter(edge => edge.id !== edgeId);
   return project.designMap.edges.length < before;
 }
 
-/* lays out one element's mechanisms: linked ones become chains read left to right, the rest stand on their own */
-export function mechanismFlow(project, col) {
-  const mechanisms = project.stickers.filter(sticker => sticker.col === col);
-  const nodeToSticker = new Map(mechanisms.map(sticker => [stickerNodeId(project, sticker.id), sticker]).filter(([nodeId]) => nodeId));
-  const edges = project.designMap.edges.filter(edge => nodeToSticker.has(edge.from) && nodeToSticker.has(edge.to))
-    .map(edge => ({ id: edge.id, from: nodeToSticker.get(edge.from).id, to: nodeToSticker.get(edge.to).id }));
-  const group = new Map(mechanisms.map(sticker => [sticker.id, sticker.id]));
-  const root = id => group.get(id) === id ? id : root(group.get(id));
-  for (const edge of edges) group.set(root(edge.from), root(edge.to));
-  const chains = [], solo = [];
-  for (const sticker of mechanisms) {
-    const key = root(sticker.id);
-    if (!edges.some(edge => root(edge.from) === key)) { solo.push(sticker); continue; }
-    if (chains.some(chain => chain.key === key)) continue;
-    const members = mechanisms.filter(item => root(item.id) === key);
-    const chainEdges = edges.filter(edge => root(edge.from) === key);
-    const step = new Map();
-    const stepOf = id => {
-      if (!step.has(id)) step.set(id, Math.max(-1, ...chainEdges.filter(edge => edge.to === id).map(edge => stepOf(edge.from))) + 1);
-      return step.get(id);
-    };
-    const rows = new Map();
-    const nodes = members.map(item => {
-      const column = stepOf(item.id), row = rows.get(column) || 0;
-      rows.set(column, row + 1);
-      return { sticker: item, column, row };
-    });
-    chains.push({ key, nodes, edges: chainEdges, columns: Math.max(...nodes.map(node => node.column)) + 1, rows: Math.max(...rows.values()) });
+/* links in terms of notes rather than map nodes */
+export function noteLinks(project) {
+  const byNode = new Map(project.designMap.nodes.map(node => [node.id, node.stickerId]));
+  return project.designMap.edges
+    .map(edge => ({ id: edge.id, from: byNode.get(edge.from), to: byNode.get(edge.to), label: LINK_LABELS[edge.label] ? edge.label : "then" }))
+    .filter(link => link.from && link.to);
+}
+
+/* what to highlight for a focused note or element: its own notes, notes linked to them directly,
+   and everything further down the arrows that a change would ripple into */
+export function focusSets(project, focus) {
+  const links = noteLinks(project);
+  const self = new Set(focus.note ? [focus.note] : project.stickers.filter(sticker => sticker.col === focus.col).map(sticker => sticker.id));
+  const direct = new Set(), edges = new Set(), affected = new Set();
+  for (const link of links) if (self.has(link.from) || self.has(link.to)) { edges.add(link.id); direct.add(link.from); direct.add(link.to); }
+  const stack = [...self], seen = new Set(self);
+  while (stack.length) {
+    const id = stack.pop();
+    for (const link of links) if (link.from === id && !seen.has(link.to)) { seen.add(link.to); affected.add(link.to); stack.push(link.to); }
   }
-  return { mechanisms, chains: chains.map(({ key, ...chain }) => chain), solo };
+  const ripple = new Set(links.filter(link => !edges.has(link.id) && (self.has(link.from) || affected.has(link.from)) && affected.has(link.to)).map(link => link.id));
+  for (const id of self) direct.delete(id);
+  return { self, direct, edges, affected, ripple };
+}
+
+/* ---------- canvas layout: nine clusters, notes stacked inside each ---------- */
+export const CLUSTER_W = 250, NOTE_H = 58, NOTE_GAP = 8, HEAD_H = 46, ADD_H = 30, PAD = 10, GAP_X = 96, GAP_Y = 64, MARGIN = 40;
+
+export function clusterState(project, col) {
+  return (project.designMap.clusters || {})[col] || {};
+}
+
+export function mapLayout(project) {
+  const clusters = {}, notes = {};
+  const heights = COLS.map(category => {
+    const count = project.stickers.filter(sticker => sticker.col === category.key).length;
+    return clusterState(project, category.key).collapsed ? HEAD_H : HEAD_H + Math.max(1, count) * (NOTE_H + NOTE_GAP) + ADD_H + PAD;
+  });
+  let top = MARGIN;
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const index = row * 3 + col, key = COLS[index].key, saved = clusterState(project, key);
+      clusters[key] = {
+        x: Number.isFinite(saved.x) ? saved.x : MARGIN + col * (CLUSTER_W + GAP_X),
+        y: Number.isFinite(saved.y) ? saved.y : top,
+        w: CLUSTER_W, h: heights[index], collapsed: !!saved.collapsed
+      };
+    }
+    top += Math.max(...heights.slice(row * 3, row * 3 + 3)) + GAP_Y;
+  }
+  for (const category of COLS) {
+    const box = clusters[category.key];
+    project.stickers.filter(sticker => sticker.col === category.key).forEach((sticker, index) => {
+      notes[sticker.id] = box.collapsed
+        ? { x: box.x, y: box.y, w: box.w, h: HEAD_H, hidden: true }
+        : { x: box.x + PAD, y: box.y + HEAD_H + index * (NOTE_H + NOTE_GAP), w: box.w - PAD * 2, h: NOTE_H };
+    });
+  }
+  const boxes = Object.values(clusters);
+  return { clusters, notes, width: Math.max(...boxes.map(box => box.x + box.w)) + MARGIN * 3,   // room for arrows that curve out to the right
+     height: Math.max(...boxes.map(box => box.y + box.h)) + MARGIN };
+}
+
+function setCluster(project, col, values) {
+  project.designMap.clusters ||= {};
+  project.designMap.clusters[col] = { ...clusterState(project, col), ...values };
+}
+
+export function moveCluster(project, col, x, y) {
+  setCluster(project, col, { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) });
+}
+
+export function toggleCluster(project, col) {
+  setCluster(project, col, { collapsed: !clusterState(project, col).collapsed });
+}
+
+/* moves a note up or down inside its own element; other elements keep their order */
+export function reorderNote(project, stickerId, toIndex) {
+  const sticker = project.stickers.find(item => item.id === stickerId);
+  if (!sticker) return false;
+  const same = project.stickers.filter(item => item.col === sticker.col && item !== sticker);
+  same.splice(Math.max(0, Math.min(same.length, toIndex)), 0, sticker);
+  let next = 0;
+  project.stickers = project.stickers.map(item => item.col === sticker.col ? same[next++] : item);
+  return true;
 }

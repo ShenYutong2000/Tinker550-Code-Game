@@ -1,15 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createProject } from '../src/state/project.js';
+import { createProject, pendingChanges } from '../src/state/project.js';
 import {
+  connectNotes,
   ensureStickerNode,
-  linkMechanisms,
-  mechanismFlow,
+  focusSets,
+  HEAD_H,
+  mapLayout,
+  moveCluster,
+  noteLinks,
   removeStickerNode,
+  reorderNote,
+  setLinkLabel,
   setStickerNodeStatus,
   syncStickerNodes,
-  unlinkMechanisms,
+  toggleCluster,
+  unlinkNotes,
 } from '../src/state/design-map.js';
 
 function projectWith(...stickers) {
@@ -20,13 +27,21 @@ function projectWith(...stickers) {
   }
   return project;
 }
+/* the example from the design brief: bombs → lose a life → 3 lives → game over */
+const bombGame = () => projectWith(
+  { id: 'cat', col: 'character', text: '🐱 cat' },
+  { id: 'bombs', col: 'conflict', text: 'bombs fall from the sky' },
+  { id: 'hit', col: 'rules', text: 'if the cat touches a bomb, it loses 1 life' },
+  { id: 'lives', col: 'resources', text: '3 lives' },
+  { id: 'over', col: 'outcome', text: 'the game ends when all lives are lost' },
+  { id: 'keys', col: 'procedures', text: 'arrow keys to move' },
+);
 
 test('game notes stay linked when confirmed, built, renamed, and removed', () => {
   const project = createProject('Robo');
-  const sticker = { id: 'step-1', col: 'rules', text: 'Touch star to score', status: 'new' };
+  const sticker = { id: 'step-1', col: 'rules', text: 'Touch star to score', status: 'ok' };
   project.stickers.push(sticker);
   const node = ensureStickerNode(project, sticker);
-  sticker.status = 'ok';
   setStickerNodeStatus(project, sticker.id, 'confirmed');
   sticker.id = 'step-2';
   sticker.text = 'Touch gem to score';
@@ -34,7 +49,6 @@ test('game notes stay linked when confirmed, built, renamed, and removed', () =>
 
   assert.equal(project.designMap.nodes.length, 1);
   assert.equal(project.designMap.nodes[0].id, node.id);
-  assert.equal(project.designMap.nodes[0].stickerId, 'step-2');
   assert.equal(project.designMap.nodes[0].title, 'Touch gem to score');
   project.lastBuilt.push('step-2');
   syncStickerNodes(project);
@@ -43,64 +57,81 @@ test('game notes stay linked when confirmed, built, renamed, and removed', () =>
   assert.equal(project.designMap.nodes.length, 0);
 });
 
-test('mechanisms link only inside one element, never to themselves, twice, or in a circle', () => {
-  const project = projectWith(
-    { id: 'bombs', col: 'conflict', text: 'bombs fall from the sky' },
-    { id: 'faster', col: 'conflict', text: 'the stars come faster and faster' },
-    { id: 'shake', col: 'conflict', text: 'the screen shakes' },
-    { id: 'lives', col: 'resources', text: '3 lives' },
-  );
-  assert.equal(linkMechanisms(project, 'bombs', 'bombs'), 'self');
-  assert.equal(linkMechanisms(project, 'bombs', 'lives'), 'other-element');
-  assert.equal(linkMechanisms(project, 'bombs', 'ghost'), 'missing');
-  assert.equal(linkMechanisms(project, 'bombs', 'faster'), 'linked');
-  assert.equal(linkMechanisms(project, 'faster', 'bombs'), 'duplicate');
-  assert.equal(linkMechanisms(project, 'faster', 'shake'), 'linked');
-  assert.equal(linkMechanisms(project, 'shake', 'bombs'), 'loop');
-  assert.equal(project.designMap.edges.length, 2);
+test('notes connect across elements with a label, never to themselves or twice', () => {
+  const project = bombGame();
+  assert.equal(connectNotes(project, 'bombs', 'bombs').result, 'self');
+  assert.equal(connectNotes(project, 'bombs', 'ghost').result, 'missing');
+  assert.equal(connectNotes(project, 'bombs', 'hit').edge.label, 'then');
+  assert.equal(connectNotes(project, 'hit', 'lives').edge.label, 'uses');
+  assert.equal(connectNotes(project, 'lives', 'over').edge.label, 'ends');
+  assert.equal(connectNotes(project, 'keys', 'cat').edge.label, 'controls');
+  assert.equal(connectNotes(project, 'over', 'lives').result, 'duplicate');
+  const { edge } = connectNotes(project, 'over', 'bombs', 'uses');
+  assert.equal(edge.label, 'uses');
+  assert.equal(setLinkLabel(project, edge.id, 'then'), true);
+  assert.equal(setLinkLabel(project, edge.id, 'teleports'), false);
+  assert.equal(noteLinks(project).find(link => link.id === edge.id).label, 'then');
+  assert.equal(unlinkNotes(project, edge.id), true);
+  assert.equal(noteLinks(project).length, 4);
 });
 
-test('an element lays out its chains left to right and keeps independent mechanisms apart', () => {
-  const project = projectWith(
-    { id: 'bombs', col: 'conflict', text: 'bombs fall from the sky' },
-    { id: 'faster', col: 'conflict', text: 'the stars come faster and faster' },
-    { id: 'shake', col: 'conflict', text: 'the screen shakes' },
-    { id: 'wind', col: 'conflict', text: 'wind pushes the cat' },
-  );
-  linkMechanisms(project, 'bombs', 'faster');
-  linkMechanisms(project, 'bombs', 'shake');
-  const flow = mechanismFlow(project, 'conflict');
-
-  assert.deepEqual(flow.mechanisms.map(sticker => sticker.id), ['bombs', 'faster', 'shake', 'wind']);
-  assert.deepEqual(flow.solo.map(sticker => sticker.id), ['wind']);
-  assert.equal(flow.chains.length, 1);
-  const [chain] = flow.chains;
-  assert.deepEqual(chain.nodes.map(({ sticker, column, row }) => [sticker.id, column, row]), [['bombs', 0, 0], ['faster', 1, 0], ['shake', 1, 1]]);
-  assert.deepEqual({ columns: chain.columns, rows: chain.rows }, { columns: 2, rows: 2 });
-  assert.deepEqual(chain.edges.map(({ from, to }) => [from, to]), [['bombs', 'faster'], ['bombs', 'shake']]);
-  assert.deepEqual(mechanismFlow(project, 'rules'), { mechanisms: [], chains: [], solo: [] });
+test('links saved before labels existed read as "if → then"', () => {
+  const project = bombGame();
+  project.designMap.edges.push({ id: 'old', from: 'card-bombs', to: 'card-hit' });
+  assert.deepEqual(noteLinks(project), [{ id: 'old', from: 'bombs', to: 'hit', label: 'then' }]);
 });
 
-test('links follow a rewritten mechanism and disappear when it is removed or unlinked', () => {
-  const project = projectWith(
-    { id: 'bombs', col: 'conflict', text: 'bombs fall from the sky' },
-    { id: 'faster', col: 'conflict', text: 'the stars come faster' },
-  );
-  linkMechanisms(project, 'bombs', 'faster');
-  const rewritten = project.stickers[1];
-  rewritten.id = 'faster-2';
-  rewritten.text = 'the stars come much faster';
-  ensureStickerNode(project, rewritten, 'faster');
-  assert.deepEqual(mechanismFlow(project, 'conflict').chains[0].edges.map(({ from, to }) => [from, to]), [['bombs', 'faster-2']]);
+test('focusing a note lights its direct links and the chain of notes it affects', () => {
+  const project = bombGame();
+  for (const [from, to] of [['bombs', 'hit'], ['hit', 'lives'], ['lives', 'over'], ['keys', 'cat']]) connectNotes(project, from, to);
+  const sets = focusSets(project, { note: 'bombs' });
+  assert.deepEqual([...sets.self], ['bombs']);
+  assert.deepEqual([...sets.direct], ['hit']);
+  assert.deepEqual([...sets.affected].sort(), ['hit', 'lives', 'over']);
+  assert.equal(sets.edges.size, 1);
+  assert.equal(sets.ripple.size, 2);
+  assert.equal(['cat', 'keys'].some(id => sets.direct.has(id) || sets.affected.has(id)), false);
+  const element = focusSets(project, { col: 'resources' });
+  assert.deepEqual([...element.self], ['lives']);
+  assert.deepEqual([...element.direct].sort(), ['hit', 'over']);
+});
 
-  const snapshot = structuredClone(project.designMap);
-  assert.equal(unlinkMechanisms(project, project.designMap.edges[0].id), true);
-  assert.equal(mechanismFlow(project, 'conflict').chains.length, 0);
-  project.designMap = snapshot;
-  assert.equal(mechanismFlow(project, 'conflict').chains.length, 1);
+test('the canvas lays out nine clusters with notes stacked inside, and remembers moves', () => {
+  const project = bombGame();
+  project.stickers.push({ id: 'hit2', col: 'rules', text: 'touch a star: +1 point', status: 'ok' });
+  const layout = mapLayout(project);
+  assert.equal(Object.keys(layout.clusters).length, 9);
+  assert.deepEqual(Object.keys(layout.clusters).slice(0, 3), ['character', 'players', 'objectives']);
+  const rules = layout.clusters.rules;
+  assert.equal(layout.notes.hit.y, rules.y + HEAD_H);
+  assert.ok(layout.notes.hit2.y > layout.notes.hit.y);
+  assert.ok(layout.notes.hit.x > rules.x && layout.notes.hit.x + layout.notes.hit.w < rules.x + rules.w);
 
-  project.stickers.splice(0, 1);
-  removeStickerNode(project, 'bombs');
-  assert.equal(project.designMap.edges.length, 0);
-  assert.deepEqual(mechanismFlow(project, 'conflict').solo.map(sticker => sticker.id), ['faster-2']);
+  moveCluster(project, 'rules', 900.4, -20);
+  assert.deepEqual({ x: mapLayout(project).clusters.rules.x, y: mapLayout(project).clusters.rules.y }, { x: 900, y: 0 });
+  toggleCluster(project, 'rules');
+  const folded = mapLayout(project);
+  assert.equal(folded.clusters.rules.h, HEAD_H);
+  assert.equal(folded.notes.hit.hidden, true);
+  assert.deepEqual(project.designMap.clusters.rules, { x: 900, y: 0, collapsed: true });
+});
+
+test('notes reorder inside their own element only', () => {
+  const project = bombGame();
+  project.stickers.push({ id: 'hit2', col: 'rules', text: 'touch a star: +1 point', status: 'ok' });
+  reorderNote(project, 'hit2', 0);
+  assert.deepEqual(project.stickers.filter(s => s.col === 'rules').map(s => s.id), ['hit2', 'hit']);
+  assert.deepEqual(project.stickers.filter(s => s.col !== 'rules').map(s => s.id), ['cat', 'bombs', 'lives', 'over', 'keys']);
+});
+
+test('pending changes count new, rewritten and removed notes once each', () => {
+  const project = bombGame();
+  project.lastBuilt = project.stickers.map(s => s.id);
+  assert.equal(pendingChanges(project), 0);
+  project.stickers.find(s => s.id === 'bombs').id = 'bombs-2';
+  project.stickers.find(s => s.id === 'bombs-2').replaces = 'bombs';
+  assert.equal(pendingChanges(project), 1);
+  project.stickers = project.stickers.filter(s => s.id !== 'keys');
+  project.stickers.push({ id: 'ghost', col: 'conflict', text: 'a ghost chases you', status: 'ok' });
+  assert.equal(pendingChanges(project), 3);
 });

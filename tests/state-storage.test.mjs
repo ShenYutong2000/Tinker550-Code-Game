@@ -34,18 +34,20 @@ test('existing v6 JSON stays unchanged in storage and restores with a migrated d
   assert.equal(readBotName(storage),'Bolt');
   assert.deepEqual(readProjects(storage),[legacy]);
   const loaded=restoreProject(readProjects(storage)[0],readBotName(storage));
-  const {designMap,...legacyFields}=loaded;
-  assert.deepEqual(legacyFields,legacy);
+  const {designMap,stickers,...legacyFields}=loaded;
+  const {stickers:legacyStickers,...legacyRest}=legacy;
+  assert.deepEqual(legacyFields,legacyRest);
+  /* the confirm step is gone: a note still waiting to be confirmed loads as a regular note */
+  assert.deepEqual(stickers,legacyStickers.map(sticker=>({...sticker,status:'ok'})));
   assert.deepEqual(designMap,{
     nodes:[
       {id:'card-s1',stickerId:'s1',title:'🐱 cat',status:'built'},
       {id:'card-s2',stickerId:'s2',title:'“catching stars”',status:'built'},
-      {id:'card-s3',stickerId:'s3',title:'touch a star: it disappears, +1 point',status:'idea'}
+      {id:'card-s3',stickerId:'s3',title:'touch a star: it disappears, +1 point',status:'confirmed'}
     ],
     edges:[]
   });
-  assert.deepEqual(buildProjectSpec(loaded,false),legacy.versions[0].spec);
-  assert.equal(buildProjectSpec(loaded,true).onCatch,'score');
+  assert.deepEqual(buildProjectSpec(loaded,false),{...legacy.versions[0].spec,onCatch:'score'});
   assert.deepEqual(projectContext(loaded),{hero:{id:'s1',e:'🐱',n:'cat'},item:{e:'⭐',n:'stars'},mode:'catch'});
   loaded.stickers[0].text='changed';
   assert.equal(readProjects(storage)[0].stickers[0].text,'🐱 cat');

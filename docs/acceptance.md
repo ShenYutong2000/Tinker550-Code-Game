@@ -6,23 +6,25 @@
 
 在干净的浏览器站点数据中运行 `npm run dev`，等待字体与最初两条机器人消息加载完毕。浏览器保持默认缩放，依次设置桌面 `1440×900`、平板 `1024×768`、手机 `390×844`。桌面和平板确认 Design Map 是常驻中央主工作区，Journal 与 Preview 各自能隐藏和恢复；手机确认底部 Journal、Board、Preview 导航可切换，隐藏其中一栏后仍能从 Board 恢复。检查输入框、顶部项目菜单和滚动区域没有被遮挡。Canvas 随机元素、Logo 动画和打字动画按行为核对。
 
-## 首版游戏
+## 开场与第一版草稿
 
-1. 将机器人命名为 `Bolt`；输入角色 `a cat`、动作 `catching stars`。标题应自动变为 `Cat: Catching Stars`。
-2. 在中央常驻设计地图查看首次引导。两张红色便签分别对应角色和动作；点击确认后转为黄色，`Make my game!` 可用。
-3. 生成游戏并选择一项预测，点击 `I think so!`。确认右侧立即显示 `v1` 画布，Assessment 显示预测内容；点击 `Play this version` 或聊天中的试玩卡片后，画布获得焦点并响应控制键或鼠标。
-4. 新建项目，在开场卡片的可选描述框输入 `A cat catches stars. When bombs fall, the stars come faster and faster. You have 3 lives. The sky is purple.`，点击 `Break it down!`。确认聊天显示原文和拆分总结，CHARACTERS、OBJECTIVES、CONFLICT、RESOURCES 方块出现红色待确认数量，CONFLICT 窗口中两条机制已用 “then” 连接，无法归类的 `The sky is purple` 在聊天中列出。再新建项目只输入 `Bombs fall from the sky.`，确认机器人只询问缺少的角色和动作，填写后其余机制一并加入。
-5. 点击 `Save`，从顶部 `Projects` 菜单创建新项目，再从同一菜单加载旧项目；核对名称、对话、便签和 `v1`。改名机器人及重新开始入口也应可从项目菜单打开。关闭并重新打开同一站点，确认项目仍在。
+1. 将机器人命名为 `Bolt`。开场卡片显示三个问题（Who is in your game? / What does the character do? / How do you want players to feel?）和可折叠的 `Already have a game idea? Tell us about it!` 描述框。输入 `a cat`，点选 `collecting stars` 和 `💪 challenged`，点击 `✨ Make my first draft!`。
+2. 确认聊天说明这是第一版草稿、孩子是设计者；标题自动变为 `Cat: Collecting Stars`。设计地图的九个元素都有便签：角色和动作是孩子自己的话，其余带 ✨ 标记。地图上有带标签的箭头，至少包含 `bombs fall from the sky → if the cat touches a bomb, it loses 1 life → 3 lives → show the score at the end`。右侧立即显示可试玩的 `v1`，不出现预测问答；底部显示 `The game matches your map`。
+3. 新建项目，展开描述框输入 `A cat catches stars. When bombs fall, the stars come faster and faster. You have 3 lives. The sky is purple.`，不填问题，直接点击 `✨ Make my first draft!`。确认描述中的机制作为孩子自己的便签出现（无 ✨），两条 CONFLICT 便签之间有 `if → then` 箭头，无法归类的 `The sky is purple` 在聊天中列出。再新建项目只描述 `Bombs fall from the sky.`，确认机器人只询问缺少的问题 1 和 2，填写后描述中的机制一并加入草稿。
+4. 点击 `Save`，从顶部 `Projects` 菜单创建新项目，再从同一菜单加载旧项目；核对名称、对话、便签、箭头和 `v1`。改名机器人及重新开始入口也应可从项目菜单打开。关闭并重新打开同一站点，确认项目仍在。
 
-## 第二轮迭代
+## 设计地图
 
-1. 打开 `v1` 试玩，等待试玩反馈提示，输入 `nothing happened` 等体验描述。确认右侧 Assessment 记录预期、孩子原话和反馈分类；左侧 Journal 的 `v1` 条目显示设计便签、设计分类、预测与试玩发现。
-2. 关闭首次迭代引导，在建议卡片中选择一项，完成句子或点击建议选项。确认新红色便签并再次生成。
-3. 确认右侧预览更新为 `v2`，左侧 Journal 按版本保留 `v1` 与 `v2` 记录。点击 `Undo`，核对游戏预览返回 `v1`，其便签地图和试玩配置同步恢复；已有 `v1` Journal/Assessment 记录仍正确关联。
+1. 九个元素以不同颜色的区块显示在同一画布上，CHARACTERS 在左上角。拖动空白处平移，使用 `−`、`+` 和 `Fit` 缩放；拖动区块标题移动区块，箭头随之移动；点击 `▾` 收起区块，箭头改连到区块标题。上下拖动便签可在同一区块内调整顺序。保存并重新载入后，区块位置、收起状态和便签顺序保留。
+2. 点击 `bombs fall from the sky`：它和直接相连的便签以黄色高亮，后续受影响的便签及箭头以橙色虚线高亮，其余便签变淡但仍可见。右侧面板显示连接（可改标签或用 × 删除）和 `A change here also affects` 列表。点击元素名称时，该区块及与之相连的便签高亮。按 Esc 或点击空白处取消选中。
+3. 点击区块的 `＋`，输入新想法并 `Add to map`；新便签标记 `new`，底部显示 `1 change not in the game yet`。在面板点击 `🔗 Connect to…`，再点击另一区块的便签，确认出现跨元素箭头；尝试连接自己和重复连接，确认被阻止。编辑一条 ✨ 便签，确认它变为 `✏️ My idea`、保留原有箭头，且只算一处改动。删除一条便签，确认相关箭头一同移除。
+4. 点击 `▶ Update my game`，选择一项预测并点击 `I think so!`。确认右侧更新为 `v2`，`new` 标记消失，底部显示 `The game matches your map`。点击 `Undo`，确认地图（包括箭头）和游戏返回 `v1`。
 
-## 设计元素与机制
+## 试玩与迭代
 
-中央 Design Map 只显示九个元素方块（CHARACTERS 在首位），每个方块显示机制数量、连接数量和待确认数量。点击方块打开元素窗口，按 Esc、× 或点击窗口外关闭。窗口内红色便签可确认、编辑、删除。至少有两个机制时，点击 `Link two mechanisms`，再依次点击两张便签，确认出现带 “then” 的箭头和链条；再尝试自连、重复连接和成环连接，确认都被阻止。点击箭头上的 × 取消连接。确认未连接的机制显示在 “On their own” 中。在 CHARACTERS 窗口切换主角并添加角色；在其他元素窗口点击 `Add a mechanism`，确认对话进入该元素的建议步骤（首版生成前应提示先完成首版）。保存后重新载入并使用 Undo，确认连接随便签恢复；连接不改变游戏配置。
+1. 打开 `v1` 试玩，等待试玩反馈提示，输入 `it was too hard` 等体验描述。确认右侧 Assessment 记录孩子原话；左侧 Journal 的 `v1` 条目显示草稿便签和试玩发现。
+2. 关闭首次迭代引导，在建议卡片中选择一项，完成句子或点击建议选项。确认对应区块出现新便签，并可用 `▶ Update my game` 生成新版本。
+3. 打开 PR #11 之前或之后保存的旧项目：仍待确认的便签直接显示在地图上并计入待更新改动，旧连接显示为 `if → then`。
 
 ## Journal 与 Assessment
 

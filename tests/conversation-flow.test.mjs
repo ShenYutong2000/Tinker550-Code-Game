@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createProject, createUIState } from '../src/state/project.js';
+import { createProject, createUIState, pendingChanges } from '../src/state/project.js';
 import { createConversation } from '../src/conversation/flow.js';
 
 function waitFor(predicate, timeout = 10000) {
@@ -54,46 +54,58 @@ async function withConversation(run) {
   }
 }
 
-test('a child can create and revise a game through two versions', () => withConversation(async ({ flow, UI, elements, loadedSpecs, state }) => {
-    let project = state.project;
+test('the three answers become a playable first draft that the child then changes on the map', () => withConversation(async ({ flow, UI, elements, loadedSpecs, state }) => {
+    const project = state.project;
     elements.get('#inWho').value = 'a cat';
     elements.get('#inDo').value = 'catching stars';
+    UI.feel = 'challenged';
     flow.doOpening();
-    assert.equal(project.stickers.length, 2);
-    project.stickers.forEach(sticker => flow.confirmSticker(sticker.id));
-    flow.generate();
-    assert.ok(UI.gen);
-    UI.gen.done = true;
-    UI.gen.guess = 'the cat gets a point';
-    flow.finishGen();
+    assert.equal(new Set(project.stickers.map(sticker => sticker.col)).size, 9);
+    assert.ok(project.stickers.every(sticker => sticker.status === 'ok'));
+    assert.equal(project.designMap.edges.length, 6);
+    /* the first draft is built straight away, without the guessing quiz */
     assert.equal(project.versions.length, 1);
-    assert.equal(project.phase, 'playtest');
     assert.equal(loadedSpecs.length, 1);
-    assert.equal(project.versions[0].journal.steps.length, 2);
+    assert.equal(project.phase, 'playtest');
+    assert.equal(project.prediction, null);
+    assert.equal(pendingChanges(project), 0);
+    assert.equal(project.versions[0].spec.lives, 3);
+    assert.equal(project.versions[0].spec.hazard, '💣');
+    assert.equal(project.name, 'Cat: Catching Stars');
 
     await waitFor(() => !flow.isPumping());
+    assert.match(project.chat.map(message => message.html).join('\n'), /first draft[\s\S]*You're the designer!/);
     project.seen.push('iterate', 'star');
-    elements.get('#composer').value = 'nothing happened';
+    elements.get('#composer').value = 'it was too hard';
     flow.send();
     await waitFor(() => !flow.isPumping());
-    assert.equal(project.versions[0].assessment.response, 'nothing happened');
-    assert.equal(project.versions[0].assessment.alignment, 'different');
+    assert.equal(project.versions[0].assessment.response, 'it was too hard');
     assert.equal(project.phase, 'directions');
 
+    /* direct edits on the map: add one note, remove a draft note */
+    const ghost = flow.addNote('conflict', 'a little ghost chases the cat');
+    assert.deepEqual(ghost.effect, { enemy: '👻' });
+    assert.equal(ghost.by, 'kid');
+    flow.delSticker(project.stickers.find(sticker => sticker.effect && sticker.effect.hazard).id);
+    assert.equal(pendingChanges(project), 2);
+    /* and one through the chat suggestions */
     UI.sel = flow.directions()[0].col;
     flow.pickGo();
     assert.equal(project.phase, 'choice');
     flow.pickOption(0);
-    const newSticker = project.stickers.find(sticker => sticker.status === 'new');
-    assert.ok(newSticker);
-    flow.confirmSticker(newSticker.id);
+    assert.equal(project.phase, 'confirm');
+    assert.equal(pendingChanges(project), 3);
+
     flow.generate();
+    assert.ok(UI.gen);
     UI.gen.done = true;
-    UI.gen.guess = 'the game changes';
+    UI.gen.guess = 'it gets harder';
     flow.finishGen();
     assert.equal(project.versions.length, 2);
-    assert.equal(project.versions[1].n, 2);
-    assert.equal(loadedSpecs.length, 2);
+    assert.equal(project.versions[1].spec.enemy, '👻');
+    assert.equal(project.versions[1].spec.hazard, undefined);
+    assert.equal(pendingChanges(project), 0);
+    assert.equal(project.prediction.guess, 'it gets harder');
     assert.equal(project.phase, 'playtest');
 
     await waitFor(() => !flow.isPumping());
@@ -106,7 +118,7 @@ test('a child can create and revise a game through two versions', () => withConv
     assert.equal(flow.isPumping(), false);
 }));
 
-test('a description is broken into notes across elements, asking only for what is missing', () => withConversation(async ({ flow, UI, elements, state }) => {
+test('a description fills the draft in the child\'s own words, asking only for what is missing', () => withConversation(async ({ flow, UI, elements, state }) => {
   const project = state.project;
   flow.describe('My hero is a penguin. When bombs fall, the fish come faster. You have 3 lives. The sky is purple.');
   assert.equal(project.stickers.length, 0);
@@ -117,28 +129,17 @@ test('a description is broken into notes across elements, asking only for what i
   elements.get('#inDo').value = 'catching fish';
   flow.doOpening();
   assert.equal(UI.idea, null);
-  assert.deepEqual(project.stickers.map(sticker => [sticker.col, sticker.status]), [
-    ['character', 'new'], ['objectives', 'new'], ['conflict', 'new'], ['conflict', 'new'], ['resources', 'new'],
-  ]);
-  assert.deepEqual(project.stickers[0].effect, { char: { e: '🐧', n: 'penguin' } });
-  assert.deepEqual(project.stickers[4].effect, { lives: 3 });
-  assert.equal(project.designMap.edges.length, 1);
-  assert.equal(project.phase, 'confirm');
+  const own = project.stickers.filter(sticker => sticker.by === 'kid');
+  assert.deepEqual(own.map(sticker => sticker.col), ['character', 'objectives', 'conflict', 'conflict', 'resources']);
+  assert.deepEqual(own[0].effect, { char: { e: '🐧', n: 'penguin' } });
+  assert.equal(new Set(project.stickers.map(sticker => sticker.col)).size, 9);
+  assert.equal(project.versions[0].spec.lives, 3);
+  assert.equal(project.versions[0].spec.hazard, '💣');
 
   await waitFor(() => !flow.isPumping());
   const said = project.chat.map(message => message.html).join('\n');
-  assert.match(said, /5 mechanisms<\/b> across 4 elements: <b>CHARACTERS<\/b>, <b>OBJECTIVES<\/b>, <b>RESOURCES<\/b>, <b>CONFLICT<\/b>/);
-  assert.match(said, /linked 1 “when → then” pair/);
+  assert.match(said, /on all nine elements/);
   assert.match(said, /“The sky is purple”/);
-
-  project.stickers.forEach(sticker => flow.confirmSticker(sticker.id));
-  flow.generate();
-  UI.gen.done = true;
-  UI.gen.guess = 'the penguin catches fish';
-  flow.finishGen();
-  assert.equal(project.versions[0].spec.lives, 3);
-  assert.equal(project.versions[0].spec.hazard, '💣');
-  await waitFor(() => !flow.isPumping());
   state.project = createProject('Robo');
   flow.resetProject(state.project);
   await new Promise(resolve => setTimeout(resolve, 300));
