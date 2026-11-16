@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { buildDraft } from '../src/design/draft.js';
-import { codeFor, ENGINE_ANCHORS, runProgram, writeProgram } from '../src/game/program.js';
+import { codeFor, ENGINE_ANCHORS, KNOBS, runProgram, writeProgram } from '../src/game/program.js';
 import { connectNotes, ensureStickerNode } from '../src/state/design-map.js';
 import { buildProjectSpec, createProject, pendingChanges } from '../src/state/project.js';
 
@@ -22,6 +22,8 @@ test('every first draft runs as a program that makes exactly the same game as be
     for (const act of ['collecting stars', 'dodging meteors', 'jumping over obstacles', 'popping balloons', 'exploring a mysterious world']) {
       const project = draftProject(act, feel), { hero, ...expected } = buildProjectSpec(project, false);
       const { hero: ran, ...spec } = runProgram(writeProgram(project).source);
+      /* the program also writes the engine's own tuning numbers, so they can be changed in the Code view */
+      for (const key of Object.keys(KNOBS)) if (!(key in expected)) delete spec[key];
       assert.deepEqual(spec, expected, `${feel} / ${act}`);
       assert.deepEqual(ran, { e: hero.e, n: hero.n });
     }
@@ -59,7 +61,7 @@ test('a note shows its own lines, the engine lines behind it, and a plain explan
   const bombs = codeFor(program, project, find(project, s => s.effect && s.effect.hazard), engineSource);
   assert.equal(program.lines[bombs.lines[0]], 'game.drop("💣");  // bombs fall from the sky');
   assert.match(bombs.explain[0], /drops a 💣 from the top/);
-  assert.deepEqual(bombs.engine.map(line => line.text.slice(0, 20)), ['if(drop&&st.sb<=0){', 'for(const o of st.hz']);
+  assert.deepEqual(bombs.engine.map(line => line.text.slice(0, 20)).slice(0, 2), ['if(drop&&st.sb<=0){', 'for(const o of st.hz']);
   const hit = codeFor(program, project, find(project, s => /loses 1 life/.test(s.text)), engineSource);
   assert.match(hit.explain[0], /takes away 1 life/);
   assert.ok(hit.engine.some(line => line.text.startsWith('if(sp.lives){st.lives--')));

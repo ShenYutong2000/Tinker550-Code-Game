@@ -43,9 +43,17 @@ test('the extracted base styles and game engine match the prototype', () => {
     'if(sp.lives){st.lives--;',              // fires "hero loses a life"
     'poof(o.x,o.y,"#FFD166");',              // fires "hero catches something"
     'const m=sp.mode,sm=sp.speedUp',         // speed includes the goFaster boost
+    /* the rest read the numbers the Code view can tune; each stays the prototype's value until a child changes it */
+    'if(c.jump&&h.onGround){h.vy=-430;',
+    'if(m==="catch"&&st.sg<=0)',
+    'if(m==="shoot"&&st.goods.length<5',
+    'if(m==="dodge"&&st.sh<=0)',
+    'if(m==="jump"&&st.sh<=0)',
     'if(sp.hazard&&st.sb<=0){',              // things can start falling because of a rule
     'if(m==="jump")st.hz.push({x:W+20,y:GROUND-85',
     'else st.hz.push({x:rand(16,W-16),y:-16,vy:rand(100,140)*sm,r:13,e:sp.hazard',
+    'st.sb=1.9/sm;',
+    'if(st.enemy){const h=st.heroes[0];',
   ];
   assert.deepEqual(changed.map(line => allowed.find(start => line.startsWith(start)) || line), allowed);
 });

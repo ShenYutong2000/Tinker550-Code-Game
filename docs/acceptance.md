@@ -25,6 +25,9 @@
 1. 在右侧面板切换到 `</> Code`，未选中便签时显示整段游戏程序，按九个元素分组，最后是 RULES。选中 `if the cat touches a bomb, it loses 1 life`，或在便签面板点击 `</> See the code`：只显示这张便签的程序行（黄色标记），下面是 `What it does` 的说明和 `Inside the game engine` 中 `engine.js` 的碰撞检测与生命减少两行。手机上点击 `See the code` 会切换到 Preview 标签并打开 Code。
 2. 在 CONFLICT 添加 `the stars come faster and faster`，再把 `bombs fall from the sky` 连接到它。确认 Code 中出现 `when("hero is hit", then.goFaster());`，加速那一行变为 `// waits for a rule below`，两处都带橙色边表示尚未运行；底部显示 2 处改动。点击 `Update my game` 后橙色边消失；试玩时每次被炸弹击中，画面出现 `FASTER!`，之后一切变快。
 3. 把 `BOUNDARIES` 便签连接到 `PLAYERS` 便签，确认 RULES 中写明 “not in the code yet”，游戏不变。切回 `▶ Play` 时画布仍在运行。
+4. Code 默认显示 `🧩 Blocks`：每行程序是一块按元素着色的积木，下方是它写出的那行代码；`when … then …` 规则是带开口的积木。点击 `</> Text` 回到纯代码。OBJECTIVES 中有 `⭐ stars fall at speed [90]` 和 `a new star every [0.95] seconds`，CONFLICT 的炸弹下有掉落速度与间隔，PROCEDURES 有主角速度。
+5. 把星星速度改为 `200` 并按回车：提示 “Your game is using it now”，积木下的代码变为 `game.itemSpeed(200);`，不经过对话和竞猜，版本号加 1，地图底部仍显示游戏与地图一致；切回 Play，星星明显变快。把 `lives` 改为 `5`，地图便签文字同步为 `5 lives…`；把 `RULES` 的选项改为 `grow and glow`，便签换成对应建议。超出范围的数字会被限制在范围内，无效输入恢复原值。点击 `↶ Undo` 一次撤销这一轮所有代码改动。
+6. 修改一张尚未构建的便签（例如新添加的追逐者速度）时，提示改动会在 `Update my game` 后运行。点击任一积木会在地图上选中对应便签。
 
 ## 试玩与迭代
 

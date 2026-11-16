@@ -35,6 +35,8 @@ function Game(canvas){
     npcSrc.forEach((o,k)=>st.npcs.push({e:o.e,x:60+k*90,y:sp.mode==="roam"?80+k*40:GROUND-16,vx:(k%2?-1:1)*40,t:Math.random()*5}));
     if(sp.enemy) st.enemy={x:W-30,y:40,e:sp.enemy};
   }
+  /* numbers the Code view can change, as a share of the prototype's own value (1 when not set) */
+  const kn=(k,d)=>(sp[k]||d)/d;
   const hasScore=()=>sp.onCatch==="score"||sp.dodgeScore||sp.jumpScore||(sp.rules||[]).some(r=>r.do.some(a=>a.act==="addPoint"));
   function addScore(i,n,x,y){const k=sp.pmode==="versus"?i:0;st.score[k]+=n;st.pops.push({x,y,t:0,s:"+"+n,c:"#FFD166"});fire("score",st.heroes[i]||st.heroes[0],x,y);}
   // --- rules from the design map: when something happens, do something ---
@@ -120,7 +122,7 @@ function Game(canvas){
       const ox=h.x;
       if(h.stun>0){h.stun-=dt;}
       else if(m==="jump"){
-        if(c.jump&&h.onGround){h.vy=-430;h.onGround=false;}
+        if(c.jump&&h.onGround){h.vy=-430*kn("jumpPower",430);h.onGround=false;}
       } else {
         if(c.useMouse){h.x+=(mouse.x-h.x)*Math.min(1,dt*9);if(m==="roam")h.y+=(mouse.y-h.y)*Math.min(1,dt*9);}
         else{h.x+=c.dx*spd*dt;if(m==="roam")h.y+=c.dy*spd*dt;}
@@ -146,16 +148,16 @@ function Game(canvas){
     // spawning
     st.sg-=dt;st.sh-=dt;st.sb-=dt;
     const item=sp.item||{e:"⭐"};
-    if(m==="catch"&&st.sg<=0){st.goods.push({x:rand(20,W-20),y:-16,vy:rand(70,110)*sm,r:14,e:item.e,ph:Math.random()*6});st.sg=.95/sm;}
+    if(m==="catch"&&st.sg<=0){st.goods.push({x:rand(20,W-20),y:-16,vy:rand(70,110)*sm*kn("itemSpeed",90),r:14,e:item.e,ph:Math.random()*6});st.sg=.95/sm*kn("itemEvery",.95);}
     if(m==="roam"&&st.goods.length<4&&st.sg<=0){st.goods.push({x:rand(30,W-30),y:rand(40,GROUND-30),r:14,e:item.e,ph:Math.random()*6});st.sg=.8;}
-    if(m==="shoot"&&st.goods.length<5&&st.sg<=0){const l=Math.random()<.5;st.goods.push({x:l?-10:W+10,y:rand(40,150),vx:(l?1:-1)*rand(50,90)*sm,r:15,e:item.e,ph:Math.random()*6});st.sg=1.1/sm;}
-    if(m==="dodge"&&st.sh<=0){st.hz.push({x:rand(16,W-16),y:-16,vy:rand(110,160)*sm,r:14,e:item.e,spin:rand(-3,3),a:0});st.sh=(sp.dense?.38:.7)/sm;}
-    if(m==="jump"&&st.sh<=0){const big=sp.tall?1.5:1;st.hz.push({x:W+20,y:GROUND-14*big,vx:-170*sm,r:14*big,e:item.e,a:0,ground:1});st.sh=rand(1.2,2.1)/sm;}
+    if(m==="shoot"&&st.goods.length<5&&st.sg<=0){const l=Math.random()<.5;st.goods.push({x:l?-10:W+10,y:rand(40,150),vx:(l?1:-1)*rand(50,90)*sm*kn("itemSpeed",70),r:15,e:item.e,ph:Math.random()*6});st.sg=1.1/sm*kn("itemEvery",1.1);}
+    if(m==="dodge"&&st.sh<=0){st.hz.push({x:rand(16,W-16),y:-16,vy:rand(110,160)*sm*kn("itemSpeed",135),r:14,e:item.e,spin:rand(-3,3),a:0});st.sh=(sp.dense?.38:.7)/sm*kn("itemEvery",.7);}
+    if(m==="jump"&&st.sh<=0){const big=sp.tall?1.5:1;st.hz.push({x:W+20,y:GROUND-14*big,vx:-170*sm*kn("itemSpeed",170),r:14*big,e:item.e,a:0,ground:1});st.sh=rand(1.2,2.1)/sm*kn("itemEvery",1.65);}
     const drop=sp.hazard||st.drop;
     if(drop&&st.sb<=0){
-      if(m==="jump")st.hz.push({x:W+20,y:GROUND-85,vx:-210*sm,r:13,e:drop,a:0});
-      else st.hz.push({x:rand(16,W-16),y:-16,vy:rand(100,140)*sm,r:13,e:drop,spin:rand(-2,2),a:0});
-      st.sb=1.9/sm;
+      if(m==="jump")st.hz.push({x:W+20,y:GROUND-85,vx:-210*sm*kn("dropSpeed",120),r:13,e:drop,a:0});
+      else st.hz.push({x:rand(16,W-16),y:-16,vy:rand(100,140)*sm*kn("dropSpeed",120),r:13,e:drop,spin:rand(-2,2),a:0});
+      st.sb=1.9/sm*kn("dropEvery",1.9);
     }
     // move things
     for(const o of st.goods){
@@ -181,7 +183,7 @@ function Game(canvas){
     }
     for(const b of st.bul)for(const o of st.goods){if(o.dead||b.dead)continue;if(Math.hypot(o.x-b.x,o.y-b.y)<o.r+5){b.dead=1;if(caught(st.heroes[b.i]||st.heroes[0],o,true))o.dead=1;}}
     st.goods=st.goods.filter(o=>!o.dead);st.bul=st.bul.filter(b=>!b.dead);st.hz=st.hz.filter(o=>!o.dead);
-    if(st.enemy){const h=st.heroes[0];const a=Math.atan2(h.y-st.enemy.y,h.x-st.enemy.x),v=55*sm;st.enemy.x+=Math.cos(a)*v*dt;st.enemy.y+=Math.sin(a)*v*dt;}
+    if(st.enemy){const h=st.heroes[0];const a=Math.atan2(h.y-st.enemy.y,h.x-st.enemy.x),v=55*sm*kn("chaserSpeed",55);st.enemy.x+=Math.cos(a)*v*dt;st.enemy.y+=Math.sin(a)*v*dt;}
     // end conditions
     if(sp.timer){st.timer-=dt;if(st.timer<=0){st.timer=0;end(sp.surviveWin?"win":"time");}}
     const goal=sp.winAt||sp.target;

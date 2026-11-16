@@ -7,6 +7,20 @@ import { noteLinks } from "../state/design-map.js";
 const q=v=>JSON.stringify(v);
 const name=s=>s.text.replace(/^“(.*)”$/,"$1");
 
+/* numbers the engine uses that a child can change straight from the Code view; d is the engine's own value for a game mode */
+export const KNOBS={
+  speed:{call:"heroSpeed",d:()=>1,min:.25,max:4,step:.25},
+  itemSpeed:{call:"itemSpeed",d:m=>({catch:90,dodge:135,shoot:70,jump:170})[m],min:10,max:600,step:5},
+  itemEvery:{call:"itemEvery",d:m=>({catch:.95,dodge:.7,shoot:1.1,jump:1.65})[m],min:.1,max:5,step:.05},
+  jumpPower:{call:"jumpPower",d:()=>430,min:150,max:900,step:10},
+  dropSpeed:{call:"dropSpeed",d:()=>120,min:10,max:600,step:5},
+  dropEvery:{call:"dropEvery",d:()=>1.9,min:.2,max:6,step:.1},
+  chaserSpeed:{call:"chaserSpeed",d:()=>55,min:5,max:300,step:5}
+};
+/* every value a block lets a child change: numbers have limits, choices come from the element's own suggestions */
+export const SLOTS={...KNOBS,lives:{min:1,max:20,step:1},timer:{min:5,max:300,step:5},winAt:{min:1,max:200,step:1},target:{min:1,max:200,step:1},
+  players:{choice:true},pmode:{choice:true},control:{choice:true},onCatch:{choice:true},onHit:{choice:true},bound:{choice:true},outcome:{choice:true}};
+
 /* setup calls, matched against a note's effect keys in this order */
 const PARTS=[
   {keys:["mode","item"],call:"play",args:e=>[e.mode,e.item.e,e.item.n],set:(m,e,n)=>({mode:m,item:{e,n}})},
@@ -32,20 +46,34 @@ const PARTS=[
   {keys:["outcome"],call:"ending"},
   {keys:["target"],call:"goal"},
   {keys:["survive"],call:"longerIsBetter"},
-  {keys:["surviveWin"],call:"winWhenTimeRunsOut"}
+  {keys:["surviveWin"],call:"winWhenTimeRunsOut"},
+  ...Object.entries(KNOBS).filter(([key])=>key!=="speed").map(([key,knob])=>({keys:[key],call:knob.call}))
 ];
 /* a single switch is written without an argument: game.coins(), not game.coins(true) */
 const argsOf=(part,e)=>part.args?part.args(e):part.keys.length===1&&e[part.keys[0]]===true?[]:part.keys.map(k=>e[k]);
 
 function splitEffect(effect){
   const rest={...effect},calls=[];
+  for(const key of Object.keys(KNOBS))delete rest[key];
   while(Object.keys(rest).length){
     const part=PARTS.find(p=>p.keys.every(k=>k in rest));
     if(!part){calls.push({call:"set",args:[rest],part:null});break;}
-    calls.push({call:part.call,args:argsOf(part,rest),part});
+    const args=argsOf(part,rest);
+    calls.push({call:part.call,args,keys:part.args?[]:part.keys.slice(0,args.length),part});
     part.keys.forEach(k=>delete rest[k]);
   }
   return calls;
+}
+
+/* the numbers a note can tune: the ones it already set, plus the engine's own values for what it adds to the game */
+function knobsOf(s,mode,speedOwner){
+  const e=s.effect||{},keys=Object.keys(e).filter(key=>key in KNOBS);
+  if(e.mode&&e.mode!=="roam")keys.push("itemSpeed","itemEvery");
+  if(e.mode==="jump")keys.push("jumpPower");
+  if(e.hazard)keys.push("dropSpeed","dropEvery");
+  if(e.enemy)keys.push("chaserSpeed");
+  if(s.id===speedOwner)keys.push("speed");
+  return [...new Set(keys)].map(key=>({call:KNOBS[key].call,args:[key in e?e[key]:KNOBS[key].d(mode)],keys:[key],knob:true})).filter(c=>c.args[0]!==undefined);
 }
 
 /* ---------- what each note can start, and what it can do, inside a rule ---------- */
@@ -84,12 +112,14 @@ function builtIn(event,action,spec,from,label){
 }
 
 export function writeProgram(project){
-  const lines=[],notes={},links={};
-  const push=(text,owner)=>{lines.push(text);if(owner)(owner.list[owner.id]||=[]).push(lines.length-1);};
+  const lines=[],notes={},links={},calls={},blocks=[];
+  const push=(text,owner,block)=>{lines.push(text);if(owner)(owner.list[owner.id]||=[]).push(lines.length-1);if(block)blocks.push({...block,line:lines.length-1});};
   const stickers=project.stickers,byId=new Map(stickers.map(s=>[s.id,s]));
   const hero=stickers.find(s=>s.id===project.activeChar&&s.col==="character")||stickers.find(s=>s.col==="character");
   /* the plain settings first, so rule decisions can tell what the engine already does */
   const spec={};for(const s of stickers)if(s.effect&&s.col!=="character")Object.assign(spec,s.effect);
+  /* the hero's speed is shown on the controls note, unless a note already sets it (the mouse and jumping ignore it) */
+  const speedOwner=!stickers.some(s=>s.effect&&"speed" in s.effect)&&spec.mode!=="jump"&&(stickers.find(s=>s.col==="procedures"&&s.effect&&s.effect.control!=="mouse")||{}).id;
   const rules=[],waiting=new Set();
   for(const link of noteLinks(project)){
     if(link.label!=="then"&&link.label!=="ends")continue;
@@ -105,13 +135,16 @@ export function writeProgram(project){
     push("");
     push(`// ${category.ic} ${category.en}`);
     for(const s of own){
-      const owner={list:notes,id:s.id};
-      if(s.col==="character"){const c=s.effect&&s.effect.char;if(c)push(`game.${s===hero?"hero":"friend"}(${q(c.e)}, ${q(c.n)});`,owner);continue;}
-      if(!s.effect){push(`// not in the code yet: “${name(s)}”`,owner);continue;}
-      if(!Object.keys(s.effect).length){push(`// built into the game engine: “${name(s)}”`,owner);continue;}
-      const calls=splitEffect(s.effect).map(c=>`game.${c.call}(${c.args.map(q).join(", ")});`);
-      if(waiting.has(s.id))calls.forEach(c=>push(`// waits for a rule below: ${c}`,owner));
-      else calls.forEach((c,i)=>push(c+(i===0?`  // ${name(s)}`:""),owner));
+      const owner={list:notes,id:s.id},block={note:s.id,col:s.col};
+      if(s.col==="character"){const c=s.effect&&s.effect.char;if(c){const call=s===hero?"hero":"friend";calls[s.id]=[{call,args:[c.e,c.n],keys:[]}];push(`game.${call}(${q(c.e)}, ${q(c.n)});`,owner,{...block,kind:"call",...calls[s.id][0]});}continue;}
+      if(!s.effect){push(`// not in the code yet: “${name(s)}”`,owner,{...block,kind:"idea",text:name(s)});continue;}
+      if(!Object.keys(s.effect).length){push(`// built into the game engine: “${name(s)}”`,owner,{...block,kind:"builtin",text:name(s)});continue;}
+      const own=splitEffect(s.effect),knobs=knobsOf(s,spec.mode,speedOwner),waits=waiting.has(s.id);
+      calls[s.id]=[...own,...knobs];
+      own.forEach((c,i)=>{const line=`game.${c.call}(${c.args.map(q).join(", ")});`;
+        push(waits?`// waits for a rule below: ${line}`:line+(i===0?`  // ${name(s)}`:""),owner,{...block,kind:"call",call:c.call,args:c.args,keys:c.keys,waits});});
+      /* tuning numbers always run, even for a note that waits for a rule, so they are ready when it starts */
+      knobs.forEach(c=>push(`game.${c.call}(${q(c.args[0])});`,owner,{...block,kind:"call",...c}));
     }
   }
   const ruleStart=lines.length;
@@ -120,15 +153,16 @@ export function writeProgram(project){
     push("// 🔗 RULES: when something happens, then…");
     for(const r of rules){
       const owner={list:links,id:r.link.id},title=`// ${name(r.from)} → ${name(r.to)}`;
-      push(title,owner);
-      if(r.kind==="rule")push(`when(${q(EVENTS[r.event])}, then.${r.action.act}(${r.action.e?q(r.action.e):""}));`,owner);
+      const block={kind:"rule",link:r.link.id,note:r.from.id,toId:r.to.id,from:name(r.from),to:name(r.to),fromCol:r.from.col,toCol:r.to.col,ruleKind:r.kind,event:r.event,act:r.action&&r.action.act,e:r.action&&r.action.e};
+      push(title,owner,r.kind==="rule"?null:block);
+      if(r.kind==="rule")push(`when(${q(EVENTS[r.event])}, then.${r.action.act}(${r.action.e?q(r.action.e):""}));`,owner,block);
       else if(r.kind==="builtin")push(`//   the game engine already does this, so no extra line is needed`,owner);
       else push(`//   not in the code yet: the game can't tell when this happens`,owner);
       for(const id of [r.from.id,r.to.id])(notes[id]||=[]).push(...(owner.list[owner.id]||[]));
     }
   }
   for(const id of Object.keys(notes))notes[id]=[...new Set(notes[id])].sort((a,b)=>a-b);
-  return {source:lines.join("\n"),lines,notes,links,rules,ruleStart,heroId:hero&&hero.id};
+  return {source:lines.join("\n"),lines,notes,links,rules,ruleStart,calls,blocks,heroId:hero&&hero.id};
 }
 
 /* runs a program and returns the game settings it makes; the engine plays these */
@@ -148,15 +182,22 @@ export function runProgram(source){
   return JSON.parse(JSON.stringify(spec));
 }
 
+const MODE_LINES=['if(m==="catch"&&st.sg<=0)','if(m==="dodge"&&st.sh<=0)','if(m==="jump"&&st.sh<=0)','if(m==="shoot"&&st.goods.length<5','if(m==="roam"&&st.goods.length<4'];
 /* ---------- the engine lines behind each kind of note, with a kid-sized explanation ---------- */
 const ENGINE={
-  play:{anchors:['if(m==="catch"&&st.sg<=0)','if(m==="dodge"&&st.sh<=0)','if(m==="jump"&&st.sh<=0)','if(m==="shoot"&&st.goods.length<5','if(m==="roam"&&st.goods.length<4'],pick:(e)=>e.mode,
+  play:{anchors:MODE_LINES,byMode:true,
     say:e=>`This sets what your game is about. Every moment, the engine checks a timer and adds a new ${e.item.e} ${e.item.n} to the screen.`},
   hero:{anchors:["function hero(i){"],say:()=>"This puts your hero on the canvas. The engine remembers where it is, how big it is, and which way it faces."},
   friend:{anchors:["const npcSrc="],say:()=>"Extra characters walk around the screen. With two players, Player 2 controls one of them."},
   players:{anchors:["if(sp.players===2) st.heroes.push(hero(1));"],say:()=>"This decides how many heroes there are. With 2 players, the engine adds a second hero for the WASD keys."},
   controls:{anchors:["function ctrl(i){"],say:()=>"Every frame, the engine reads the keys or the mouse and turns them into moves for the hero."},
-  heroSpeed:{anchors:["spd=200*(sp.speed||1)"],say:()=>"This number is how fast the hero moves. A bigger number means faster."},
+  heroSpeed:{anchors:["spd=200*(sp.speed||1)"],say:()=>"This number is how fast the hero moves. 1 is normal, 2 is twice as fast."},
+  itemSpeed:{anchors:MODE_LINES,byMode:true,say:()=>"This number is how fast each one moves, in dots per second. Make it bigger and they move faster, smaller and they move slower."},
+  itemEvery:{anchors:MODE_LINES,byMode:true,say:()=>"This is how many seconds the engine waits before adding a new one. A smaller number means more of them."},
+  jumpPower:{anchors:['h.vy=-430*kn("jumpPower"'],say:()=>"This is how hard the hero pushes off the ground. A bigger number means a higher jump."},
+  dropSpeed:{anchors:['else st.hz.push({x:rand(16,W-16),y:-16,vy:rand(100,140)'],say:()=>"This number is how fast the falling things drop. A bigger number means faster."},
+  dropEvery:{anchors:['st.sb=1.9/sm*kn("dropEvery"'],say:()=>"This is how many seconds the engine waits before dropping the next one. A smaller number means more of them."},
+  chaserSpeed:{anchors:['v=55*sm*kn("chaserSpeed"'],say:()=>"This number is how fast the chaser moves toward the hero. A bigger number means it catches you sooner."},
   lives:{anchors:['if(sp.lives){st.lives--'],say:()=>"The game keeps a number called lives. Each time the hero is hit, lives goes down by 1. When it reaches 0, the game is over."},
   timer:{anchors:["if(sp.timer){st.timer-=dt;"],say:()=>"The timer counts down a little every frame. When it reaches 0, the game ends."},
   timerToWin:{anchors:["if(sp.timer){st.timer-=dt;"],say:()=>"The timer counts down every frame. If you are still playing when it reaches 0, you win."},
@@ -194,12 +235,13 @@ export function codeFor(program,project,stickerId,engineSource){
   const e=s.effect||{},kinds=[];
   if(s.col==="character")kinds.push(program.heroId===s.id?"hero":"friend");
   else if(s.effect&&!Object.keys(e).length)kinds.push("builtin");
-  else if(s.effect)splitEffect(e).forEach(c=>c.part&&kinds.push(c.call));
+  else (program.calls[s.id]||[]).forEach(c=>(c.part||c.knob)&&kinds.push(c.call));
   const rules=program.rules.filter(r=>r.from.id===s.id||r.to.id===s.id);
   const explain=kinds.map(k=>ENGINE[k]&&ENGINE[k].say(e)).filter(Boolean);
   for(const r of rules)if(r.kind==="rule")explain.push(`When ${RULE_WORDS[r.event]}, ${ACT_WORDS[r.action.act]}. The when(...) line tells the engine to listen for that moment.`);
   if(!s.effect)explain.push("The game can't build this idea yet, so there is no code for it. It stays in your design as a plan.");
-  const anchors=kinds.flatMap(k=>{const part=ENGINE[k];if(!part)return [];if(k==="play"){const i=["catch","dodge","jump","shoot","roam"].indexOf(e.mode);return [part.anchors[i]];}return part.anchors;});
+  const mode=(project.stickers.find(x=>x.effect&&x.effect.mode)||{effect:{}}).effect.mode;
+  const anchors=kinds.flatMap(k=>{const part=ENGINE[k];if(!part)return [];if(part.byMode){const i=["catch","dodge","jump","shoot","roam"].indexOf(mode);return i>=0?[part.anchors[i]]:[];}return part.anchors;});
   if(rules.some(r=>r.kind==="rule"))anchors.push(...ENGINE.rule.anchors);
   return {sticker:s,lines:program.notes[s.id]||[],explain,engine:engineSource?engineLines(engineSource,anchors):[],rules};
 }

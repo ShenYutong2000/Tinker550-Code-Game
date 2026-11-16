@@ -95,7 +95,14 @@ export function createRenderer({ getProject, UI, botName, directions, chars, bui
     $("#pane").classList.toggle("code-on", code);
     document.querySelectorAll("[data-pane-tab]").forEach(b => { const on = b.dataset.paneTab === (code ? "code" : "play"); b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
     view.hidden = !code;
-    if (code) { const open = [...view.querySelectorAll("details")].map(d => d.open); view.innerHTML = templates.codeViewHTML(); view.querySelectorAll("details").forEach((d, i) => { if (open[i] !== undefined && d.classList.contains("code-all")) d.open = open[i]; }); }
+    if (code) {
+      const open = [...view.querySelectorAll("details")].map(d => d.open), editing = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.codeEdit, top = view.parentElement.scrollTop;
+      view.innerHTML = templates.codeViewHTML();
+      view.querySelectorAll("details").forEach((d, i) => { if (open[i] !== undefined && d.classList.contains("code-all")) d.open = open[i]; });
+      /* keep the place and the slot being changed, so a block can be tuned again and again */
+      view.parentElement.scrollTop = top;
+      if (editing) [...view.querySelectorAll("[data-code-edit]")].find(el => el.dataset.codeEdit === editing)?.focus({ preventScroll: true });
+    }
   }
   function renderEdges() { const layer = $("#mapEdges"); if (layer) layer.innerHTML = templates.edgesHTML(); }
   function makeCallout(info, more) {

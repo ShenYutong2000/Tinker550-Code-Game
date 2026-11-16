@@ -1,8 +1,10 @@
 import { COLS, COLMAP, FEELINGS } from "../design/catalog.js";
 import { alignmentLabel } from "../state/journal.js";
 import { focusSets, HEAD_H, LINK_LABELS, mapLayout, noteLinks } from "../state/design-map.js";
-import { pendingChanges, ruleLines } from "../state/project.js";
-import { codeFor, writeProgram } from "../game/program.js";
+import { pendingChanges, projectContext, ruleLines } from "../state/project.js";
+import { codeFor, SLOTS, writeProgram } from "../game/program.js";
+import { slotChoices } from "../state/code-edit.js";
+import { ACT_WORDS, blockParts, choiceWord, EVENT_WORDS } from "./blocks.js";
 
 export const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 export const ROBOT=`<svg class="avatar" viewBox="0 0 120 120" aria-hidden="true"><rect x="34" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="68" y="12" width="18" height="14" rx="4" fill="#FFD166"/><rect x="18" y="22" width="84" height="80" rx="14" fill="#FFD166"/><rect x="18" y="90" width="84" height="12" rx="6" fill="#D9A13A"/><rect x="26" y="30" width="22" height="8" rx="4" fill="#FFE6A6"/><g class="eye"><rect x="35" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="70" y="48" width="15" height="18" rx="3" fill="#15102A"/><rect x="39" y="51" width="5" height="5" fill="#fff"/><rect x="74" y="51" width="5" height="5" fill="#fff"/></g><ellipse cx="30" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><ellipse cx="90" cy="75" rx="7" ry="4.5" fill="#FF8A5C" opacity=".8"/><path d="M49 74 Q60 85 71 74" stroke="#15102A" stroke-width="6" fill="none" stroke-linecap="round"/></svg>`;
@@ -204,6 +206,34 @@ function linesHTML(lines,show,lit,pending){
   }
   return `<div class="code-block">${out}</div>`;
 }
+/* ---------- blocks: the same program, one Scratch-style block per line, with the values a child can change ---------- */
+function slotHTML(s,slot){
+  const spec=SLOTS[slot.key],id=esc(s.id+"|"+slot.key);
+  if(spec.choice)return `<select class="blk-slot choice" data-code-edit="${id}" aria-label="Change this choice">${slotChoices(getProject(),s,slot.key).map(v=>`<option value="${esc(v)}" ${v===slot.value?"selected":""}>${esc(choiceWord(slot.key,v))}</option>`).join("")}</select>`;
+  return `<input class="blk-slot" type="number" inputmode="decimal" data-code-edit="${id}" value="${slot.value}" min="${spec.min}" max="${spec.max}" step="${spec.step}" style="width:${String(slot.value).length+3}ch" aria-label="Change this number">`;
+}
+function blockHTML(b,program,lit,pending,ctx){
+  const P=getProject(),s=P.stickers.find(x=>x.id===b.note),state=`${lit.has(b.line)?"lit":""} ${pending.has(b.line)?"pending":""}`;
+  const code=`<code class="blk-code">${codeHTML(program.lines[b.line])}</code>`;
+  if(b.kind==="rule"&&b.ruleKind==="rule"){
+    const then=ACT_WORDS[b.act].split(/(\{e\})/).map(x=>x==="{e}"?`<span class="blk-v">${esc(b.e)}</span>`:esc(x)).join("");
+    return `<div class="blk blk-rule ${state}" style="--hue:${HUES.rules}" data-block-note="${esc(b.note)}"><div class="blk-hat"><b>when</b> <span class="blk-v">${esc(EVENT_WORDS[b.event])}</span></div><div class="blk-mouth"><div class="blk-cmd" style="--hue:${HUES[b.toCol]}"><b>then</b> ${then}</div></div><div class="blk-foot"></div>${code}</div>`;
+  }
+  if(b.kind==="rule")return `<div class="blk blk-quiet ${state}" data-block-note="${esc(b.note)}"><div class="blk-body">${esc(b.from)} → ${esc(b.to)}</div><span class="blk-tag">${b.ruleKind==="builtin"?"The engine already does this, so there is no block":"Not in the code yet: the game can't tell when this happens"}</span></div>`;
+  if(b.kind!=="call")return `<div class="blk blk-quiet ${state}" data-block-note="${esc(b.note)}"><div class="blk-body">“${esc(b.text)}”</div><span class="blk-tag">${b.kind==="builtin"?"Built into the game engine":"Not in the code yet. It stays in your design as a plan"}</span></div>`;
+  const parts=blockParts(b,ctx,key=>!!SLOTS[key]&&!!s).map(p=>p.t!==undefined?esc(p.t):p.v!==undefined?`<span class="blk-v">${esc(p.v)}</span>`:slotHTML(s,p.slot)).join("");
+  return `<div class="blk ${b.waits?"waits":""} ${state}" style="--hue:${HUES[b.col]}" data-block-note="${esc(b.note)}"><div class="blk-body">${parts}</div>${b.waits?`<span class="blk-tag">waits for a rule below</span>`:""}${code}</div>`;
+}
+function blocksHTML(program,show,lit,pending){
+  const ctx=projectContext(getProject()),groups=[];
+  for(const b of program.blocks){
+    if(!show(b))continue;
+    const key=b.kind==="rule"?"links":b.col;let group=groups.find(g=>g.key===key);
+    if(!group)groups.push(group={key,list:[]});
+    group.list.push(b);
+  }
+  return `<div class="blk-list">${groups.map(g=>`<div class="blk-group"><div class="blk-head">${g.key==="links"?"🔗 RULES: when… then…":COLMAP[g.key].ic+" "+esc(COLMAP[g.key].en)}</div>${g.list.map(b=>blockHTML(b,program,lit,pending,ctx)).join("")}</div>`).join("")}</div>`;
+}
 function codeViewHTML(){
   const P=getProject();
   if(!P.versions.length)return `<div class="code-empty"><span aria-hidden="true">&lt;/&gt;</span><h2>Your game's code will appear here</h2><p>Answer the questions to get a first draft. Every note on your map becomes a few lines of code.</p></div>`;
@@ -211,23 +241,29 @@ function codeViewHTML(){
   const pending=new Set();
   for(const s of P.stickers)if(!built(s.id))(program.notes[s.id]||[]).forEach(i=>{if(i<program.ruleStart)pending.add(i);});
   program.lines.forEach((line,i)=>{if(line.startsWith("when(")&&!builtRules.has(line))pending.add(i);});
+  const blocks=UI.codeMode!=="text";
+  const modes=`<div class="code-modes" role="group" aria-label="Show the code as"><button class="${blocks?"on":""}" data-code-mode="blocks" aria-pressed="${blocks}">🧩 Blocks</button><button class="${blocks?"":"on"}" data-code-mode="text" aria-pressed="${!blocks}">&lt;/&gt; Text</button></div>`;
+  const hint=html=>blocks&&html.includes("data-code-edit")?`<p class="code-note">Change a number or a choice in a block and your game uses it right away. The line of code under each block changes with it.</p>`:"";
+  const withHint=html=>html+hint(html);
+  /* the chosen lines, as blocks or as text */
+  const view=(show,lit)=>blocks?blocksHTML(program,b=>show.includes(b.line),lit,pending):linesHTML(program.lines,show,lit,pending);
   const whole=(lit)=>`<details class="code-all"><summary>See the whole program (${program.lines.length} lines)</summary>${linesHTML(program.lines,all,lit,pending)}</details>`;
-  const legend=pending.size?`<p class="code-note"><span class="code-pending-key"></span>Lines with an orange edge aren't running yet. Tap “Update my game” to run them.</p>`:"";
+  const legend=pending.size?`<p class="code-note"><span class="code-pending-key"></span>${blocks?"Blocks":"Lines"} with an orange edge aren't running yet. Tap “Update my game” to run them.</p>`:"";
   const focus=UI.focus;
   if(focus&&focus.note){
     const c=codeFor(program,P,focus.note,engineSource);if(!c)return "";
     const lit=new Set(c.lines),show=[...lit].sort((a,b)=>a-b);
-    const engine=c.engine.length?`<details class="code-engine" open><summary>Inside the game engine</summary><p class="code-note">These lines of <code>engine.js</code> do the work every frame.</p><div class="code-block">${c.engine.map(l=>`<div class="code-line lit"><span class="ln">${l.n}</span><code>${esc(l.text)}</code></div>`).join("")}</div></details>`:"";
+    const engine=c.engine.length?`<details class="code-engine" ${blocks?"":"open"}><summary>Inside the game engine</summary><p class="code-note">These lines of <code>engine.js</code> do the work every frame.</p><div class="code-block">${c.engine.map(l=>`<div class="code-line lit"><span class="ln">${l.n}</span><code>${esc(l.text)}</code></div>`).join("")}</div></details>`:"";
     return `<div class="code-head"><span>${COLMAP[c.sticker.col].ic}</span><div><b>Code for “${esc(c.sticker.text.replace(/^“(.*)”$/,"$1"))}”</b><span>${esc(COLMAP[c.sticker.col].en)} · ${built(c.sticker.id)?"running in your game":"not running yet"}</span></div></div>
-      ${show.length?linesHTML(program.lines,show,lit,pending):""}${legend}
+      ${modes}${show.length?withHint(view(show,blocks?new Set():lit)):""}${legend}
       ${c.explain.length?`<div class="code-explain"><b>What it does</b>${c.explain.map(t=>`<p>${esc(t)}</p>`).join("")}</div>`:""}
       ${engine}${whole(lit)}`;
   }
   if(focus&&focus.col){
     const c=COLMAP[focus.col],lit=new Set(P.stickers.filter(s=>s.col===c.key).flatMap(s=>program.notes[s.id]||[])),show=[...lit].sort((a,b)=>a-b);
-    return `<div class="code-head"><span>${c.ic}</span><div><b>Code for ${esc(c.en)}</b><span>Tap one note to see what each line does</span></div></div>${show.length?linesHTML(program.lines,show,lit,pending):`<p class="code-note">No notes here yet, so no code either.</p>`}${legend}${whole(lit)}`;
+    return `<div class="code-head"><span>${c.ic}</span><div><b>Code for ${esc(c.en)}</b><span>Tap one note to see what each line does</span></div></div>${modes}${show.length?withHint(view(show,blocks?new Set():lit)):`<p class="code-note">No notes here yet, so no code either.</p>`}${legend}${whole(lit)}`;
   }
-  return `<div class="code-head"><span>&lt;/&gt;</span><div><b>Your game's program</b><span>Made from your design map. Tap a note on the map to see the lines that make it work.</span></div></div>${linesHTML(program.lines,all,new Set(),pending)}${legend}`;
+  return `<div class="code-head"><span>&lt;/&gt;</span><div><b>Your game's program</b><span>Made from your design map. Tap a block or a note on the map to see what it does.</span></div></div>${modes}${withHint(view(all,new Set()))}${legend}`;
 }
 function guideCalloutHTML(info, more){
 if(info.mini)return `<span>👈 ${info.zh}</span><button class="btn" data-ok>OK</button>`;
