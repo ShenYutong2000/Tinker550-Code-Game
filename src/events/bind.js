@@ -1,6 +1,7 @@
 import { esc } from "../ui/templates.js";
 import { choiceWord } from "../ui/blocks.js";
-import { connectNotes, mapLayout, moveCluster, NOTE_GAP, NOTE_H, reorderNote, setLinkLabel, toggleCluster, unlinkNotes } from "../state/design-map.js";
+import { connectNotes, LINK_LABELS, LOGIC_STICKERS, mapLayout, moveCluster, noteLinks, NOTE_GAP, NOTE_H, reorderNote, setLinkLabel, toggleCluster, unlinkNotes } from "../state/design-map.js";
+import { addLoop, addToLoop, removeFromLoop, removeLoop, renameLoop } from "../state/loops.js";
 
 export function bindEvents({ getProject, UI, flow, render, renderBoard, renderEdges, renderCode, renderProjects, renderTabs, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback, openProjects }) {
 const $=(s,r=document)=>r.querySelector(s);
@@ -10,12 +11,17 @@ const LINK_PROBLEM={self:"Tap a different note",duplicate:"Those two are already
 
 /* ---------- design map ---------- */
 const mapZoom=()=>Math.max(.35,Math.min(1.4,Number(UI.mapZoom)||.8));
-function clearMapSelection(){UI.focus=null;UI.adding=null;UI.editing=null;UI.connectFrom=null;}
+function clearMapSelection(){UI.focus=null;UI.adding=null;UI.editing=null;UI.connectFrom=null;UI.armed=null;UI.connectLabel=null;}
 function focusNote(id){
   const P=getProject();
+  /* a sticker picked from the library: this note is where its logic starts */
+  if(UI.armed){startLogic(id,UI.armed);return;}
   if(UI.connectFrom){
-    const from=UI.connectFrom,{result}=connectNotes(P,from,id);UI.connectFrom=null;
-    if(result==="linked"){UI.focus={note:from};renderBoard();autosave();toast("Connected! Change how they're linked in the panel");}
+    const from=UI.connectFrom,label=UI.connectLabel,{result}=connectNotes(P,from,id,label);UI.connectFrom=null;UI.connectLabel=null;
+    const kind=LOGIC_STICKERS.find(x=>x.k===noteLinks(P).find(l=>(l.from===from&&l.to===id)||(l.from===id&&l.to===from))?.label);
+    /* dropping a sticker on two notes that are already linked swaps the link's sticker */
+    if(result==="duplicate"&&label){const link=noteLinks(P).find(l=>(l.from===from&&l.to===id)||(l.from===id&&l.to===from));setLinkLabel(P,link.id,label);UI.focus={note:from};renderBoard();autosave();toast(`That link is now “${LINK_LABELS[label]}”`);return;}
+    if(result==="linked"){UI.focus={note:from};renderBoard();autosave();toast(kind&&kind.runs?`Connected with “${kind.label}”! Tap “Update my game” to try it`:`Connected with “${kind?kind.label:"a link"}”. It's a design idea, so the game won't change`);}
     else{renderBoard();toast(LINK_PROBLEM[result]);}
     return;
   }
@@ -32,6 +38,10 @@ function setMapZoom(value){
   if(viewport){UI.mapScrollLeft=Math.max(0,cx*UI.mapZoom-viewport.clientWidth/2);UI.mapScrollTop=Math.max(0,cy*UI.mapZoom-viewport.clientHeight/2);}
   renderBoard();
 }
+function startLogic(id,label){
+  UI.armed=null;UI.connectFrom=id;UI.connectLabel=label;UI.adding=null;UI.editing=null;renderBoard();
+  toast("Now tap the note it leads to");
+}
 /* a press on the map becomes a drag only after it moves a few pixels; otherwise it stays a tap */
 let drag=null,swallowClick=false;
 function swallowNextClick(){swallowClick=true;setTimeout(()=>{swallowClick=false;},0);}
@@ -39,7 +49,7 @@ function swallowNextClick(){swallowClick=true;setTimeout(()=>{swallowClick=false
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{
   const t=e.target,P=getProject();
-  if(swallowClick&&t.closest("#mapViewport")){swallowClick=false;return;}
+  if(swallowClick&&t.closest("#mapViewport,[data-logic]")){swallowClick=false;return;}
   const feel=t.closest("[data-feel]");
   if(feel){UI.feel=UI.feel===feel.dataset.feel?null:feel.dataset.feel;
     document.querySelectorAll("[data-feel]").forEach(b=>{const on=b.dataset.feel===UI.feel;b.classList.toggle("on",on);b.setAttribute("aria-pressed",String(on));});return;}
@@ -55,7 +65,7 @@ document.addEventListener("click",e=>{
         UI.adding=null;UI.focus={note:s.id};renderBoard();toast("Added! Use 🔗 to connect it to other notes");break;}
       case "edit":if(note){UI.editing=note;renderBoard();const ta=$("[data-edit-text]");if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}}break;
       case "connect":if(note){UI.connectFrom=note;renderBoard();}break;
-      case "connect-cancel":UI.connectFrom=null;renderBoard();break;
+      case "connect-cancel":UI.connectFrom=null;UI.armed=null;UI.connectLabel=null;renderBoard();break;
       case "delete":if(note)delSticker(note);break;
       case "zoom-in":setMapZoom(mapZoom()+.1);break;
       case "zoom-out":setMapZoom(mapZoom()-.1);break;
@@ -63,6 +73,25 @@ document.addEventListener("click",e=>{
     }
     return;
   }
+  /* ---------- logic sticker library and action loops ---------- */
+  const view=t.closest("[data-board-view]");if(view){UI.boardView=view.dataset.boardView;UI.adding=null;UI.editing=null;renderBoard();return;}
+  const logic=t.closest("[data-logic]");if(logic){
+    if(!P.versions.length){toast("Answer the questions first, then add logic");return;}
+    const k=logic.dataset.logic;UI.connectFrom=null;UI.connectLabel=null;UI.armed=UI.armed===k?null:k;renderBoard();
+    if(UI.armed)toast("Tap the note where this logic starts");return;}
+  const open=t.closest("[data-loop-open]");if(open){UI.loop=open.dataset.loopOpen;clearMapSelection();renderBoard();return;}
+  if(t.closest("[data-loop-back]")){UI.loop=null;clearMapSelection();renderBoard();return;}
+  if(t.closest("[data-loop-new]")){
+    if(!P.versions.length){toast("Answer the questions first, then make loops");return;}
+    UI.loop=addLoop(P).id;clearMapSelection();renderBoard();autosave();const name=$("[data-loop-name]");if(name){name.focus();name.select();}return;}
+  const dropLoop=t.closest("[data-loop-remove]");if(dropLoop){removeLoop(P,dropLoop.dataset.loopRemove);UI.loop=null;clearMapSelection();renderBoard();autosave();toast("Loop removed. Its notes are still on the map");return;}
+  const into=t.closest("[data-loop-add]");if(into){addToLoop(P,UI.loop,into.dataset.loopAdd);renderBoard();autosave();return;}
+  const out=t.closest("[data-loop-drop]");if(out){removeFromLoop(P,UI.loop,out.dataset.loopDrop);if(UI.focus&&UI.focus.note===out.dataset.loopDrop)UI.focus=null;renderBoard();autosave();toast("Taken out of this loop. It's still on the map");return;}
+  if(t.closest("[data-loop-write]")){
+    const loop=UI.loop,s=flow.addNote($("[data-loop-col]")?.value,$("[data-loop-text]")?.value||"");
+    if(!s){$("[data-loop-text]")?.focus();return;}
+    addToLoop(P,loop,s.id);renderBoard();autosave();toast("Added to the map and to this loop");return;}
+  if(t.closest(".loop-stage")&&!t.closest("[data-note],.loop-link")&&(UI.focus||UI.connectFrom||UI.armed)){clearMapSelection();renderBoard();return;}
   const unlink=t.closest("[data-unlink]");if(unlink){unlinkNotes(P,unlink.dataset.unlink);renderBoard();autosave();return;}
   const es=t.closest("[data-edit-save]");if(es){saveEdit(es.dataset.editSave);return;}
   if(t.closest("[data-edit-cancel]")){UI.editing=null;renderBoard();return;}
@@ -109,6 +138,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{
   if(e.target.matches("[data-link-label]")){setLinkLabel(getProject(),e.target.dataset.linkLabel,e.target.value);renderBoard();autosave();}
   /* a value changed in a code block: no chat needed, the game takes it right away */
+  if(e.target.matches("[data-loop-name]")){if(!renameLoop(getProject(),e.target.dataset.loopName,e.target.value))renderBoard();autosave();}
   if(e.target.matches("[data-code-edit]")){
     const [id,key]=e.target.dataset.codeEdit.split("|"),r=flow.codeEdit(id,key,e.target.value);
     if(r.ok)toast(r.live?`Changed! ${r.word}: ${choiceWord(r.key,r.from)} → ${choiceWord(r.key,r.to)}. Your game is using it now`:`Saved. It runs after you tap “Update my game”`);
@@ -118,6 +148,8 @@ document.addEventListener("change",e=>{
 document.addEventListener("pointerdown",e=>{
   if(e.button!==0||flow.isOnboardingOpen())return;
   const t=e.target,P=getProject(),zoom=mapZoom();
+  const chip=t.closest("[data-logic]");
+  if(chip&&getProject().versions.length){drag={kind:"logic",label:chip.dataset.logic,x:e.clientX,y:e.clientY,moved:false};return;}
   const head=t.closest("[data-cluster-drag]");
   if(head&&!t.closest(".cluster-btn")){
     const col=head.dataset.clusterDrag,box=mapLayout(P).clusters[col];
@@ -136,6 +168,13 @@ document.addEventListener("pointermove",e=>{
   drag.moved=true;
   if(drag.kind==="cluster"){moveCluster(getProject(),drag.col,drag.ox+dx/drag.zoom,drag.oy+dy/drag.zoom);
     const box=mapLayout(getProject()).clusters[drag.col];drag.el.style.left=box.x+"px";drag.el.style.top=box.y+"px";drag.el.classList.add("dragging");renderEdges();}
+  else if(drag.kind==="logic"){
+    /* a sticker follows the pointer; the note under it lights up as the place it will start */
+    if(!drag.ghost){const k=LOGIC_STICKERS.find(x=>x.k===drag.label);drag.ghost=document.createElement("div");drag.ghost.className="logic-ghost";drag.ghost.textContent=`${k.ic} ${k.label}`;document.body.appendChild(drag.ghost);}
+    drag.ghost.style.left=e.clientX+"px";drag.ghost.style.top=e.clientY+"px";
+    const over=document.elementFromPoint(e.clientX,e.clientY)?.closest(".cluster [data-note],.loop-note");
+    if(over!==drag.over){drag.over?.classList.remove("drop-target");over?.classList.add("drop-target");drag.over=over;}
+  }
   else if(drag.kind==="note"){drag.el.classList.add("dragging");drag.el.style.transform=`translateY(${dy/drag.zoom}px)`;}
   else{drag.viewport.scrollLeft=drag.left-dx;drag.viewport.scrollTop=drag.top-dy;}
   e.preventDefault();
@@ -146,6 +185,7 @@ function endDrag(e){
   if(d.kind==="pan"){d.viewport.classList.remove("is-panning");UI.mapScrollLeft=d.viewport.scrollLeft;UI.mapScrollTop=d.viewport.scrollTop;}
   if(!d.moved)return;
   swallowNextClick();
+  if(d.kind==="logic"){d.ghost?.remove();d.over?.classList.remove("drop-target");if(d.over)startLogic(d.over.dataset.note,d.label);else toast("Drop the sticker on a note");return;}
   if(d.kind==="cluster"){renderBoard();autosave();}
   if(d.kind==="note"){
     const P=getProject(),s=P.stickers.find(x=>x.id===d.id);if(!s)return;
@@ -163,8 +203,11 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Enter"&&e.target.id==="ownIdea"&&!e.isComposing){e.preventDefault();UI.ownText=e.target.value;pickGo();return;}
   if(e.target.matches("[data-edit-text]")){if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();saveEdit(e.target.dataset.editText);}else if(e.key==="Escape"){UI.editing=null;renderBoard();}return;}
   if(e.target.matches("[data-add-text]")){if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();$("[data-map-act=add-save]")?.click();}else if(e.key==="Escape"){UI.adding=null;renderBoard();}return;}
+  if(e.key==="Enter"&&e.target.matches("[data-loop-text]")&&!e.isComposing){e.preventDefault();$("[data-loop-write]")?.click();return;}
+  if(e.key==="Enter"&&e.target.matches("[data-loop-name]")){e.target.blur();return;}
+  if((e.key==="Enter"||e.key===" ")&&e.target.matches(".loop-note")){e.preventDefault();focusNote(e.target.dataset.note);return;}
   if((e.key==="Enter"||e.key===" ")&&e.target.matches(".cluster [data-note]")){e.preventDefault();focusNote(e.target.dataset.note);$(`.cluster [data-note="${e.target.dataset.note}"]`)?.focus();return;}
-  if(e.key==="Escape"){if(UI.connectFrom){UI.connectFrom=null;renderBoard();}else if($("#projectManager")){closeProjects();}else if(UI.focus||UI.adding){clearMapSelection();renderBoard();}}
+  if(e.key==="Escape"){if(UI.connectFrom||UI.armed){UI.connectFrom=null;UI.armed=null;UI.connectLabel=null;renderBoard();}else if($("#projectManager")){closeProjects();}else if(UI.focus||UI.adding){clearMapSelection();renderBoard();}}
 });
 $("#composer").addEventListener("input",autosize);
 document.addEventListener("input",e=>{if(e.target.id==="guessIn"&&UI.gen){UI.gen.typed=e.target.value;if(e.target.value.trim()&&UI.gen.sel!=null){UI.gen.sel=null;document.querySelectorAll(".pchoice.picked").forEach(x=>x.classList.remove("picked"));}

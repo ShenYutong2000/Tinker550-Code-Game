@@ -20,6 +20,13 @@
 3. 点击区块的 `＋`，输入新想法并 `Add to map`；新便签标记 `new`，底部显示 `1 change not in the game yet`。在面板点击 `🔗 Connect to…`，再点击另一区块的便签，确认出现跨元素箭头；尝试连接自己和重复连接，确认被阻止。编辑一条 ✨ 便签，确认它变为 `✏️ My idea`、保留原有箭头，且只算一处改动。删除一条便签，确认相关箭头一同移除。
 4. 点击 `▶ Update my game`，选择一项预测并点击 `I think so!`。确认右侧更新为 `v2`，`new` 标记消失，底部显示 `The game matches your map`。点击 `Undo`，确认地图（包括箭头）和游戏返回 `v1`。
 
+## 行动循环与逻辑贴纸
+
+1. 生成草稿后，在设计地图顶部切换到 `🔁 Loops`。应看到 `Core loop: play and score`、`Challenge loop: danger and lives`、`Ending loop: how it ends` 三张卡片，每张按顺序列出便签并以 ↺ 结尾；不在任何循环中的便签列在下方。
+2. 点击一个循环：便签沿圆环排列，循环内便签之间的逻辑贴纸画在箭头上。点击便签的 × 只把它移出循环，地图上仍保留；在 `Add a note to this loop` 中点击已有便签加入，或选择元素并写一条新便签，它会同时出现在地图和循环中。可修改循环名称、`← All loops` 返回、`Remove loop` 删除循环（便签不受影响）、`＋ New loop` 新建循环。
+3. 逻辑贴纸库在 Map 和 Loops 两个视图顶部，种类固定、可反复使用。把 `📈 more → more` 拖到一张便签上，再点击另一张便签，两者间出现该贴纸；也可先点贴纸、再依次点两张便签。贴纸上的 × 移除连接。对已连接的两张便签再放贴纸会替换原贴纸。
+4. 带 ⚙️ 的贴纸会运行：用 `⏰ every 5 s` 连接主角与 `the stars come faster and faster`，Code 中出现 `when("every 5 seconds", then.goFaster());`，更新后每 5 秒显示 `FASTER!`。`and`、`or`、`unless`、`more → more` 在 Code 中显示为设计想法，游戏不变。
+
 ## Code 视图
 
 1. 在右侧面板切换到 `</> Code`，未选中便签时显示整段游戏程序，按九个元素分组，最后是 RULES。选中 `if the cat touches a bomb, it loses 1 life`，或在便签面板点击 `</> See the code`：只显示这张便签的程序行（黄色标记），下面是 `What it does` 的说明和 `Inside the game engine` 中 `engine.js` 的碰撞检测与生命减少两行。手机上点击 `See the code` 会切换到 Preview 标签并打开 Code。

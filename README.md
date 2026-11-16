@@ -77,7 +77,7 @@ Tinker550-Code-Game/
 - `src/events/bind.js`：把按钮的 `data-*` 属性、键盘和输入事件连接到流程。新增交互控件时，同时检查模板和这里的处理分支。
 - `src/game/program.js`：把设计地图写成可读的游戏程序（每张便签几行设置、每条 if → then 箭头一行 `when` 规则），运行它得到游戏配置，并为 Code 视图找出便签对应的程序行和引擎行，以及每行对应的积木与可调数字。`src/ui/blocks.js` 把程序行显示成类似 Scratch 的可编辑积木，`src/state/code-edit.js` 处理在积木里直接改数值。
 - `src/game/engine.js`：Canvas 游戏运行代码，供网站试玩和导出的游戏共用；包含执行地图规则的小规则系统。`export.js` 生成当前游戏的独立 HTML，并处理下载或复制代码。
-- `src/state/project.js`：创建和恢复项目、初始化临时界面状态、把地图上的便签转换成游戏配置，并计算尚未进入游戏的改动。`design-map.js` 管理便签之间带标签的连接、画布布局、选中时的高亮与受影响便签，以及区块位置和收起状态；`journal.js` 把版本便签、预测与试玩反馈整理成可显示的日志视图，并将试玩反思写回对应版本；`storage.js` 负责浏览器 `localStorage` 的读写和清除。
+- `src/state/project.js`：创建和恢复项目、初始化临时界面状态、把地图上的便签转换成游戏配置，并计算尚未进入游戏的改动。`design-map.js` 管理便签之间带标签的连接、画布布局、选中时的高亮与受影响便签，以及区块位置和收起状态，并定义逻辑贴纸库（`LOGIC_STICKERS`）；`loops.js` 管理关键行动循环（由地图上的便签组成，可新建、改名、删除，加入或移出便签）及草稿中的默认循环；`journal.js` 把版本便签、预测与试玩反馈整理成可显示的日志视图，并将试玩反思写回对应版本；`storage.js` 负责浏览器 `localStorage` 的读写和清除。
 - `src/styles/base.css`、`app.css`：原型样式及桌面、平板、手机响应式规则。修改布局时检查三个视口。
 - `src/ui/templates.js`：机器人图形、消息、卡片、项目管理弹窗、九个元素区块的设计地图画布、便签面板、三问开场卡片、提示浮层等 HTML 模板与可见文字。`render.js` 根据当前状态把模板更新到页面。要改“显示什么”，先看这里。
 
@@ -89,7 +89,7 @@ Tinker550-Code-Game/
 - `baseline/source/Tinker 550.html`：用户原始 HTML 的逐字节副本，作为历史基准保留。`baseline/screenshots/` 保存三个视口及设计地图、试玩、导出的截图；`baseline/README.md` 记录原始哈希和已走通的流程。日常开发不要修改原始副本。
 - `docs/architecture.md`：模块职责、数据流、存档兼容和构建产物。`docs/acceptance.md`：手动验收首版游戏、第二轮迭代、保存、撤销和导出的步骤。
 - `scripts/check-syntax.mjs`：检查源码、脚本和测试的 JavaScript 语法。`scripts/make-file-preview.mjs`：把构建后的 JS 和 CSS 内联，生成可直接双击的整站预览文件。
-- `tests/baseline-fidelity.test.mjs`：核对原始文件哈希、静态页面、样式和游戏引擎。`design-parity.test.mjs`：核对设计词条与解析。`analyze.test.mjs`：检查游戏描述的拆分、归类、连接与缺失部分。`draft.test.mjs`：检查每种感受和动作都能生成覆盖九个元素、互不冲突的草稿及默认连接。`program.test.mjs`：检查程序与旧配置一致、箭头变成规则、Code 视图的程序行与引擎行，以及规则改动计入待更新。`code-edit.test.mjs`：检查积木与可调数字、在积木中改值立即生效并合并为一个版本、便签文字同步、范围限制与选项替换。`engine-rules.test.mjs`：用固定随机数实际运行引擎，确认规则会改变游戏。`design-map.test.mjs`：检查便签同步、跨元素带标签连接、高亮集合、画布布局、排序和待更新改动计数。`state-storage.test.mjs`：检查旧 `v6` 项目、地图便签保存、存储行为和 Journal/Assessment 数据。`conversation-flow.test.mjs`：检查三问开场生成草稿、地图编辑、更新版本、试玩记录与项目切换。`app-boot.test.mjs`：检查生产包启动、旧项目加载及游戏 HTML 导出。
+- `tests/baseline-fidelity.test.mjs`：核对原始文件哈希、静态页面、样式和游戏引擎。`design-parity.test.mjs`：核对设计词条与解析。`analyze.test.mjs`：检查游戏描述的拆分、归类、连接与缺失部分。`draft.test.mjs`：检查每种感受和动作都能生成覆盖九个元素、互不冲突的草稿及默认连接。`program.test.mjs`：检查程序与旧配置一致、箭头变成规则、Code 视图的程序行与引擎行，以及规则改动计入待更新。`loops.test.mjs`：检查草稿生成的行动循环、循环的增删改、循环随便签改写和删除同步、旧存档补齐循环，以及逻辑贴纸中可运行与仅作设计的种类。`code-edit.test.mjs`：检查积木与可调数字、在积木中改值立即生效并合并为一个版本、便签文字同步、范围限制与选项替换。`engine-rules.test.mjs`：用固定随机数实际运行引擎，确认规则会改变游戏。`design-map.test.mjs`：检查便签同步、跨元素带标签连接、高亮集合、画布布局、排序和待更新改动计数。`state-storage.test.mjs`：检查旧 `v6` 项目、地图便签保存、存储行为和 Journal/Assessment 数据。`conversation-flow.test.mjs`：检查三问开场生成草稿、地图编辑、更新版本、试玩记录与项目切换。`app-boot.test.mjs`：检查生产包启动、旧项目加载及游戏 HTML 导出。
 - `index.html`：页面固定容器、按钮及 Vite 模块入口。`vite.config.js` 使用相对资源路径，便于把构建结果放在网站子目录。
 - `package.json` 定义开发、构建和检查命令；修改依赖时一并更新并提交 `package-lock.json`。`CONTRIBUTING.md` 说明三人协作边界和 PR 要求。
 - `dist/` 和 `node_modules/` 是本地生成目录，已被 `.gitignore` 排除。前者由构建产生，后者由 `npm ci` 安装；不要把它们提交到 GitHub。

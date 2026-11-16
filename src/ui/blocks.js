@@ -46,7 +46,7 @@ export const CHOICE_WORDS={
   outcome:{celebrate:"confetti 🎉",endScreen:"show the score 🔢",leaderboard:"a leaderboard 🏆"}
 };
 export const choiceWord=(key,value)=>(CHOICE_WORDS[key]&&CHOICE_WORDS[key][value])||String(value);
-export const EVENT_WORDS={hit:"the hero is hit 💥",catch:"the hero catches something ✋",score:"the score goes up ⬆️",loseLife:"the hero loses a life 💔"};
+export const EVENT_WORDS={tick:"every 5 seconds ⏰",hit:"the hero is hit 💥",catch:"the hero catches something ✋",score:"the score goes up ⬆️",loseLife:"the hero loses a life 💔"};
 export const ACT_WORDS={goFaster:"everything speeds up ⏩",dropThings:"drop {e} from the sky",sendChaser:"send {e} to chase the hero",loseLife:"lose a life 💔",addPoint:"+1 point",addCoin:"get a coin 🪙",grow:"the hero grows 🌟",shrink:"the hero shrinks 🔽",getDizzy:"the hero gets dizzy 💫",win:"you win 🏆",gameOver:"game over 🏁"};
 
 /* a call block as pieces: {t} plain words, {v} a fixed value, {slot} a value the child can change */

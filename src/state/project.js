@@ -1,5 +1,6 @@
 import { cap } from '../design/parse.js';
 import { syncStickerNodes } from './design-map.js';
+import { ensureLoops } from './loops.js';
 import { writeProgram } from '../game/program.js';
 
 export function createProject(botName){
@@ -29,12 +30,13 @@ export function restoreProject(saved, botName){
   project.stickers=(project.stickers||[]).map(sticker=>sticker.status==="new"?{...sticker,status:"ok"}:sticker);
   project.designMap=migrateDesignMap(project,saved.designMap);
   syncStickerNodes(project);
+  ensureLoops(project);
   if(["generating","choice","newchar"].includes(project.phase))project.phase=project.versions.length?"directions":(project.stickers.length?"confirm":"opening");
   return project;
 }
 
 export function createUIState(viewportWidth){
-  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,paneTab:"play",codeMode:"blocks",adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
+  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,paneTab:"play",codeMode:"blocks",boardView:"map",loop:null,armed:null,connectLabel:null,adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
 }
 
 export const projectCharacters=project=>project.stickers.filter(sticker=>sticker.col==="character");

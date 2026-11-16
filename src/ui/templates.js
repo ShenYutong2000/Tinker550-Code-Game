@@ -1,6 +1,7 @@
 import { COLS, COLMAP, FEELINGS } from "../design/catalog.js";
 import { alignmentLabel } from "../state/journal.js";
-import { focusSets, HEAD_H, LINK_LABELS, mapLayout, noteLinks } from "../state/design-map.js";
+import { focusSets, HEAD_H, LINK_LABELS, LOGIC_STICKERS, mapLayout, noteLinks } from "../state/design-map.js";
+import { findLoop, loopLinks, projectLoops } from "../state/loops.js";
 import { pendingChanges, projectContext, ruleLines } from "../state/project.js";
 import { codeFor, SLOTS, writeProgram } from "../game/program.js";
 import { slotChoices } from "../state/code-edit.js";
@@ -176,16 +177,70 @@ function inspectorHTML(sets){
     ${UI.editing===s.id?"":`<div class="insp-actions"><button class="btn soft" data-map-act="edit">✏️ Edit</button><button class="btn soft" data-map-act="connect">🔗 Connect to…</button><button class="btn soft" data-act="show-code">&lt;/&gt; See the code</button>${s.col==="character"&&hero&&hero.id!==s.id?`<button class="btn soft" data-char="${s.id}">⭐ Make main</button>`:""}<button class="btn soft danger" data-map-act="delete">🗑 Remove</button></div>`}
   </aside>`;
 }
+/* the switch between the map and the loops, and what the board is waiting for: a sticker to place, or a note to link to */
+function boardTools(){
+  const P=getProject(),from=UI.connectFrom&&P.stickers.find(s=>s.id===UI.connectFrom),sticker=LOGIC_STICKERS.find(x=>x.k===(UI.connectLabel||UI.armed)),loops=UI.boardView==="loops";
+  const views=`<div class="board-views" role="group" aria-label="Board view"><button class="${loops?"":"on"}" data-board-view="map" aria-pressed="${!loops}">🗺️ Map</button><button class="${loops?"on":""}" data-board-view="loops" aria-pressed="${loops}">🔁 Loops</button></div>`;
+  const tag=sticker?`<b class="logic-tag">${sticker.ic} ${esc(sticker.label)}</b>`:"";
+  const tools=from?`<div class="map-banner">🔗 Tap the note that <b>${esc(noteText(from))}</b> leads to ${tag} <button class="link" data-map-act="connect-cancel">Cancel</button></div>`
+    :UI.armed?`<div class="map-banner">${tag} Tap the note where it starts <button class="link" data-map-act="connect-cancel">Cancel</button></div>`
+    :`<span class="map-hint">${loops?"Tap a loop to see its notes and the logic between them":"Tap a note to see its links · drag a box by its title to move it"}</span>`;
+  return views+tools;
+}
+function libraryHTML(){
+  const on=UI.armed||UI.connectLabel;
+  return `<div class="logic-lib" role="group" aria-label="Logic sticker library"><span class="logic-lib-t">Logic stickers</span>${LOGIC_STICKERS.map(x=>`<button class="logic-chip ${on===x.k?"on":""}" data-logic="${x.k}" title="${esc(x.tip)}" aria-label="${esc(x.label+": "+x.tip)}">${x.ic} ${esc(x.label)}${x.runs?`<i aria-hidden="true">⚙️</i>`:""}</button>`).join("")}<span class="logic-lib-hint">Drag a sticker onto a note, then tap the note it leads to · ⚙️ runs in the game</span></div>`;
+}
 function boardHTML(){
+  if(UI.boardView==="loops")return loopsHTML();
   const P=getProject(),layout=mapLayout(P),zoom=mapZoom(),sets=UI.focus?focusSets(P,UI.focus):null;
-  const from=UI.connectFrom&&P.stickers.find(s=>s.id===UI.connectFrom);
-  const tools=from?`<div class="map-banner">🔗 Tap the note that <b>${esc(noteText(from))}</b> leads to <button class="link" data-map-act="connect-cancel">Cancel</button></div>`
-    :`<span class="map-hint">Tap a note to see its links · drag a box by its title to move it</span>`;
-  return `<div class="map-toolbar">${tools}<div class="map-tool-group"><button class="map-tool icon-tool" data-map-act="zoom-out" aria-label="Zoom out" title="Zoom out">−</button><span class="map-zoom-value">${Math.round(zoom*100)}%</span><button class="map-tool icon-tool" data-map-act="zoom-in" aria-label="Zoom in" title="Zoom in">+</button><button class="map-tool" data-map-act="fit">▣ <span>Fit</span></button></div></div>
+  return `<div class="map-toolbar">${boardTools()}<div class="map-tool-group"><button class="map-tool icon-tool" data-map-act="zoom-out" aria-label="Zoom out" title="Zoom out">−</button><span class="map-zoom-value">${Math.round(zoom*100)}%</span><button class="map-tool icon-tool" data-map-act="zoom-in" aria-label="Zoom in" title="Zoom in">+</button><button class="map-tool" data-map-act="fit">▣ <span>Fit</span></button></div></div>${libraryHTML()}
   <div class="map-viewport ${sets?"has-focus":""}" id="mapViewport" aria-label="Design map. Drag empty space to move around"><div class="map-world-wrap" style="width:${layout.width*zoom}px;height:${layout.height*zoom}px"><div class="map-world" id="mapWorld" style="width:${layout.width}px;height:${layout.height}px;transform:scale(${zoom})">
     <div class="map-edges-layer" id="mapEdges">${edgesHTML(layout)}</div>
     ${COLS.map(c=>clusterHTML(c,layout,sets)).join("")}
   </div></div></div>${inspectorHTML(sets)}`;
+}
+/* ---------- action loops: groups of map notes that a player goes around again and again ---------- */
+const shortText=(t,n=34)=>t.length>n?t.slice(0,n-1)+"…":t;
+function loopChip(s){return `<span class="loop-chip" style="--hue:${HUES[s.col]}">${COLMAP[s.col].ic} ${esc(shortText(noteText(s)))}</span>`;}
+function loopsHTML(){
+  const P=getProject(),byId=id=>P.stickers.find(s=>s.id===id),loop=UI.loop&&findLoop(P,UI.loop),sets=UI.focus?focusSets(P,UI.focus):null;
+  const head=`<div class="map-toolbar">${boardTools()}${loop?"":`<div class="map-tool-group"><button class="map-tool" data-loop-new>＋ <span>New loop</span></button></div>`}</div>${libraryHTML()}`;
+  if(!loop){
+    const loops=projectLoops(P),inLoop=new Set(loops.flatMap(l=>l.notes)),loose=P.stickers.filter(s=>!inLoop.has(s.id));
+    const cards=loops.map(l=>{const notes=l.notes.map(byId).filter(Boolean);
+      return `<button class="loop-card" data-loop-open="${l.id}"><span class="loop-card-h">🔁 ${esc(l.name)}</span><span class="loop-card-n">${plural(notes.length,"note")} · ${plural(loopLinks(P,l).length,"logic sticker")}</span><span class="loop-chain">${notes.length?notes.map(loopChip).join('<span class="loop-arr">→</span>')+'<span class="loop-arr">↺</span>':'<span class="loop-card-n">Empty. Tap to add notes</span>'}</span></button>`;}).join("");
+    return `${head}<div class="loops-body"><p class="loops-intro">A game is made of <b>action loops</b>: things the player does again and again. Tap a loop to see its notes and the logic stickers that connect them.</p>
+      <div class="loop-grid">${cards}<button class="loop-card add" data-loop-new>＋ New loop</button></div>
+      ${loose.length?`<div class="loops-loose"><b>Not in any loop yet</b><div>${loose.map(loopChip).join("")}</div></div>`:""}</div>`;
+  }
+  /* notes sit on a ring, each as wide as the gap to its neighbors allows */
+  const notes=loop.notes.map(byId).filter(Boolean),n=notes.length,R=37,w=n<3?30:Math.max(18,Math.min(30,2*R*Math.sin(Math.PI/n)-7));
+  const at={};notes.forEach((s,i)=>{const a=-Math.PI/2+i*2*Math.PI/Math.max(1,n);at[s.id]={x:50+R*Math.cos(a),y:50+R*Math.sin(a)};});
+  /* each sticker is a curve that bows outward, so links between neighbors follow the loop */
+  const links=loopLinks(P,loop).map(l=>{
+    const a=at[l.from],b=at[l.to],len=Math.hypot(b.x-a.x,b.y-a.y)||1,ux=(b.x-a.x)/len,uy=(b.y-a.y)/len;
+    const sx=a.x+ux*9,sy=a.y+uy*9,tx=b.x-ux*9,ty=b.y-uy*9,mx=(sx+tx)/2,my=(sy+ty)/2;
+    let ox=mx-50,oy=my-50;const ol=Math.hypot(ox,oy);if(ol<4){ox=-uy;oy=ux;}else{ox/=ol;oy/=ol;}
+    const cx=mx+ox*9,cy=my+oy*9,state=sets?(sets.edges.has(l.id)?"lit":"dim"):"";
+    return {l,state,d:`M ${sx.toFixed(1)} ${sy.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${tx.toFixed(1)} ${ty.toFixed(1)}`,px:(sx+2*cx+tx)/4,py:(sy+2*cy+ty)/4};
+  });
+  const sticker=k=>LOGIC_STICKERS.find(x=>x.k===k);
+  const others=P.stickers.filter(s=>!loop.notes.includes(s.id));
+  return `${head}<div class="loops-body">
+    <div class="loop-head"><button class="btn soft" data-loop-back>← All loops</button><input class="loop-name" data-loop-name="${loop.id}" value="${esc(loop.name)}" maxlength="60" aria-label="Loop name"><button class="btn soft" data-loop-remove="${loop.id}">Remove loop</button></div>
+    <div class="loop-stage ${sets?"has-focus":""}">
+      <svg class="loop-svg" viewBox="0 0 100 100" aria-hidden="true"><defs><marker id="loopArrow" viewBox="0 0 10 10" markerWidth="4" markerHeight="4" refX="8" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs><circle class="loop-track" cx="50" cy="50" r="${R}"/>${links.map(x=>`<path class="loop-edge ${x.state}" d="${x.d}" marker-end="url(#loopArrow)"/>`).join("")}</svg>
+      <div class="loop-center"><span aria-hidden="true">🔁</span>${n?"round and round":"Add notes below"}</div>
+      ${notes.map(s=>`<div class="loop-note ${highlight(s.id,sets)} ${UI.connectFrom===s.id?"connect-from":""}" data-note="${s.id}" role="button" tabindex="0" style="left:${at[s.id].x}%;top:${at[s.id].y}%;width:${w.toFixed(1)}%;--hue:${HUES[s.col]}" aria-label="${esc(COLMAP[s.col].en+": "+noteText(s))}"><span class="loop-note-el">${COLMAP[s.col].ic} ${esc(COLMAP[s.col].en)}</span><span class="loop-note-t">${esc(noteText(s))}</span><button class="loop-note-x" data-loop-drop="${s.id}" aria-label="Take out of this loop" title="Take out of this loop (it stays on the map)">×</button></div>`).join("")}
+      ${links.map(x=>{const k=sticker(x.l.label);return `<span class="loop-link ${x.state} ${k.runs?"runs":""}" style="left:${x.px}%;top:${x.py}%"><button data-note="${x.l.from}" title="${esc(k.tip)}">${k.ic} ${esc(k.label)}</button><button class="loop-link-x" data-unlink="${x.l.id}" aria-label="Remove this logic sticker" title="Remove this logic sticker">×</button></span>`;}).join("")}
+    </div>
+    ${UI.focus?`<div class="loop-insp">${inspectorHTML(sets)}</div>`:""}
+    <div class="loop-add"><b>Add a note to this loop</b>
+      ${others.length?`<div class="loop-add-list">${others.map(s=>`<button class="loop-chip add" style="--hue:${HUES[s.col]}" data-loop-add="${s.id}">＋ ${COLMAP[s.col].ic} ${esc(shortText(noteText(s)))}</button>`).join("")}</div>`:`<p class="insp-sub">Every note on the map is already in this loop.</p>`}
+      <div class="loop-write"><select data-loop-col aria-label="Element for the new note">${COLS.filter(c=>c.key!=="character").map(c=>`<option value="${c.key}">${c.ic} ${esc(c.en)}</option>`).join("")}</select><input data-loop-text placeholder="Or write a new note…" aria-label="New note"><button class="btn" data-loop-write>Add</button></div>
+    </div>
+  </div>`;
 }
 function boardFoot(){
   const P=getProject(),n=pendingChanges(P);
@@ -219,7 +274,7 @@ function blockHTML(b,program,lit,pending,ctx){
     const then=ACT_WORDS[b.act].split(/(\{e\})/).map(x=>x==="{e}"?`<span class="blk-v">${esc(b.e)}</span>`:esc(x)).join("");
     return `<div class="blk blk-rule ${state}" style="--hue:${HUES.rules}" data-block-note="${esc(b.note)}"><div class="blk-hat"><b>when</b> <span class="blk-v">${esc(EVENT_WORDS[b.event])}</span></div><div class="blk-mouth"><div class="blk-cmd" style="--hue:${HUES[b.toCol]}"><b>then</b> ${then}</div></div><div class="blk-foot"></div>${code}</div>`;
   }
-  if(b.kind==="rule")return `<div class="blk blk-quiet ${state}" data-block-note="${esc(b.note)}"><div class="blk-body">${esc(b.from)} → ${esc(b.to)}</div><span class="blk-tag">${b.ruleKind==="builtin"?"The engine already does this, so there is no block":"Not in the code yet: the game can't tell when this happens"}</span></div>`;
+  if(b.kind==="rule")return `<div class="blk blk-quiet ${state}" data-block-note="${esc(b.note)}"><div class="blk-body">${esc(b.from)} → ${esc(b.to)}</div><span class="blk-tag">${b.ruleKind==="builtin"?"The engine already does this, so there is no block":b.ruleKind==="design"?`A design idea (“${esc(LINK_LABELS[b.label])}”). The game can't run this kind of sticker yet`:"Not in the code yet: the game can't tell when this happens"}</span></div>`;
   if(b.kind!=="call")return `<div class="blk blk-quiet ${state}" data-block-note="${esc(b.note)}"><div class="blk-body">“${esc(b.text)}”</div><span class="blk-tag">${b.kind==="builtin"?"Built into the game engine":"Not in the code yet. It stays in your design as a plan"}</span></div>`;
   const parts=blockParts(b,ctx,key=>!!SLOTS[key]&&!!s).map(p=>p.t!==undefined?esc(p.t):p.v!==undefined?`<span class="blk-v">${esc(p.v)}</span>`:slotHTML(s,p.slot)).join("");
   return `<div class="blk ${b.waits?"waits":""} ${state}" style="--hue:${HUES[b.col]}" data-block-note="${esc(b.note)}"><div class="blk-body">${parts}</div>${b.waits?`<span class="blk-tag">waits for a rule below</span>`:""}${code}</div>`;

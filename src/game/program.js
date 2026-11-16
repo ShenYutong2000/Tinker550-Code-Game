@@ -1,5 +1,5 @@
 import { COLS, COLMAP } from "../design/catalog.js";
-import { noteLinks } from "../state/design-map.js";
+import { LINK_LABELS, noteLinks } from "../state/design-map.js";
 
 /* The game program: written from the design map, shown in the Code view, and run to make the game.
    Each note becomes setup lines; each "if → then" or "ends when" arrow becomes a when(...) rule. */
@@ -77,7 +77,7 @@ function knobsOf(s,mode,speedOwner){
 }
 
 /* ---------- what each note can start, and what it can do, inside a rule ---------- */
-const EVENTS={hit:"hero is hit",catch:"hero catches something",score:"score goes up",loseLife:"hero loses a life"};
+const EVENTS={hit:"hero is hit",catch:"hero catches something",score:"score goes up",loseLife:"hero loses a life",tick:"every 5 seconds"};
 function eventOf(s){
   const e=s.effect||{};
   if(s.col==="resources"&&e.lives)return "loseLife";
@@ -122,8 +122,12 @@ export function writeProgram(project){
   const speedOwner=!stickers.some(s=>s.effect&&"speed" in s.effect)&&spec.mode!=="jump"&&(stickers.find(s=>s.col==="procedures"&&s.effect&&s.effect.control!=="mouse")||{}).id;
   const rules=[],waiting=new Set();
   for(const link of noteLinks(project)){
-    if(link.label!=="then"&&link.label!=="ends")continue;
-    const from=byId.get(link.from),to=byId.get(link.to),event=from&&eventOf(from),action=to&&event&&actionOf(to,event);
+    if(link.label==="uses"||link.label==="controls")continue;
+    const from=byId.get(link.from),to=byId.get(link.to);
+    /* "and", "or", "unless" and "more → more" stickers are design ideas the engine can't run yet */
+    if(!["then","ends","every"].includes(link.label)){if(from&&to)rules.push({link,from,to,event:null,action:null,kind:"design"});continue;}
+    /* "every 5 s" repeats what the second note does on a timer, whatever the first note is */
+    const event=link.label==="every"?"tick":from&&eventOf(from),action=to&&event&&actionOf(to,event);
     const kind=!event||!action?"missing":builtIn(event,action,spec,from,link.label)?"builtin":"rule";
     rules.push({link,from,to,event,action,kind});
     if(kind==="rule"&&waitsForRule(action))waiting.add(to.id);
@@ -153,10 +157,11 @@ export function writeProgram(project){
     push("// 🔗 RULES: when something happens, then…");
     for(const r of rules){
       const owner={list:links,id:r.link.id},title=`// ${name(r.from)} → ${name(r.to)}`;
-      const block={kind:"rule",link:r.link.id,note:r.from.id,toId:r.to.id,from:name(r.from),to:name(r.to),fromCol:r.from.col,toCol:r.to.col,ruleKind:r.kind,event:r.event,act:r.action&&r.action.act,e:r.action&&r.action.e};
+      const block={kind:"rule",label:r.link.label,link:r.link.id,note:r.from.id,toId:r.to.id,from:name(r.from),to:name(r.to),fromCol:r.from.col,toCol:r.to.col,ruleKind:r.kind,event:r.event,act:r.action&&r.action.act,e:r.action&&r.action.e};
       push(title,owner,r.kind==="rule"?null:block);
       if(r.kind==="rule")push(`when(${q(EVENTS[r.event])}, then.${r.action.act}(${r.action.e?q(r.action.e):""}));`,owner,block);
       else if(r.kind==="builtin")push(`//   the game engine already does this, so no extra line is needed`,owner);
+      else if(r.kind==="design")push(`//   a design idea (“${LINK_LABELS[r.link.label]}”): the game engine can't run this yet`,owner);
       else push(`//   not in the code yet: the game can't tell when this happens`,owner);
       for(const id of [r.from.id,r.to.id])(notes[id]||=[]).push(...(owner.list[owner.id]||[]));
     }
@@ -219,7 +224,7 @@ const ENGINE={
   builtin:{anchors:["for(const o of st.hz){if(o.dead)continue;if(Math.hypot",'if(sp.lives){st.lives--'],say:()=>"The engine already does this: it checks if something touches the hero, and if so, takes away 1 life."},
   rule:{anchors:["function fire(event,h,x,y){","function act(a,h,x,y){"],say:()=>""}
 };
-const RULE_WORDS={hit:"the hero is hit",catch:"the hero catches something",score:"the score goes up",loseLife:"the hero loses a life"};
+const RULE_WORDS={hit:"the hero is hit",catch:"the hero catches something",score:"the score goes up",loseLife:"the hero loses a life",tick:"5 seconds have passed"};
 const ACT_WORDS={goFaster:"everything speeds up",dropThings:"things start falling",sendChaser:"a chaser appears",loseLife:"the hero loses a life",addPoint:"you get 1 point",addCoin:"you get a coin",grow:"the hero grows",shrink:"the hero shrinks",getDizzy:"the hero gets dizzy",win:"you win",gameOver:"the game is over"};
 
 /* finds whole lines of engine source by a piece of text on that line; numbers are 1-based */

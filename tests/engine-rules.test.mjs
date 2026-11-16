@@ -27,6 +27,12 @@ test('an if → then rule written from the map changes how the game plays', () =
   assert.equal(ruled.includes('FASTER!'), true);
 });
 
+test('an "every 5 s" sticker fires on a timer, with nothing hitting the hero', () => {
+  const calm = runProgram(`game.hero("🐱", "cat");\ngame.play("catch", "⭐", "stars");\nwhen("every 5 seconds", then.goFaster());`);
+  assert.equal(play(calm, 4).includes('FASTER!'), false);
+  assert.equal(play(calm, 6).includes('FASTER!'), true);
+});
+
 test('older versions without rules still play', () => {
   assert.ok(play({ speed: 1, mode: 'catch', item: { e: '⭐', n: 'stars' }, hero: { e: '🐱', n: 'cat' }, others: [] }, 3).length > 0);
 });
