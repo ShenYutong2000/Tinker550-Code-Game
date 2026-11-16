@@ -1,4 +1,5 @@
 import { esc } from "../ui/templates.js";
+import { choiceWord } from "../ui/blocks.js";
 import { connectNotes, mapLayout, moveCluster, NOTE_GAP, NOTE_H, reorderNote, setLinkLabel, toggleCluster, unlinkNotes } from "../state/design-map.js";
 
 export function bindEvents({ getProject, UI, flow, render, renderBoard, renderEdges, renderCode, renderProjects, renderTabs, renderLive, getBoardEl, autosave, toast, allProjects, loadProject, exportHTML, newProject, restartAll, rollback, openProjects }) {
@@ -72,6 +73,9 @@ document.addEventListener("click",e=>{
     render();autosave();return;}
   const note=t.closest("[data-note]");if(note&&!flow.isOnboardingOpen()){focusNote(note.dataset.note);return;}
   if(t.closest("#mapViewport")&&!t.closest(".cluster")&&(UI.focus||UI.connectFrom)){clearMapSelection();renderBoard();return;}
+  if(t.closest("[data-code-edit]"))return;
+  const mode=t.closest("[data-code-mode]");if(mode){UI.codeMode=mode.dataset.codeMode;renderCode();return;}
+  const block=t.closest("[data-block-note]");if(block){focusNote(block.dataset.blockNote);return;}
   const paneTab=t.closest("[data-pane-tab]");if(paneTab){UI.paneTab=paneTab.dataset.paneTab;renderCode();if(UI.paneTab==="play")setTimeout(()=>$("#cv").focus({preventScroll:true}),40);return;}
   const tab=t.closest("[data-tab]");if(tab&&tab.closest("#tabbar")){UI.tab=tab.dataset.tab;if(UI.tab==="create")UI.journalOpen=true;if(UI.tab==="preview")UI.previewOpen=true;renderTabs();if(UI.tab==="preview")openPane();return;}
   const fill=t.closest("[data-fill]");if(fill){const i=$("#"+fill.dataset.fill);i.value=fill.dataset.val;if(i.id==="composer"){autosize();send();}else i.focus();return;}
@@ -104,6 +108,12 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("change",e=>{
   if(e.target.matches("[data-link-label]")){setLinkLabel(getProject(),e.target.dataset.linkLabel,e.target.value);renderBoard();autosave();}
+  /* a value changed in a code block: no chat needed, the game takes it right away */
+  if(e.target.matches("[data-code-edit]")){
+    const [id,key]=e.target.dataset.codeEdit.split("|"),r=flow.codeEdit(id,key,e.target.value);
+    if(r.ok)toast(r.live?`Changed! ${r.word}: ${choiceWord(r.key,r.from)} → ${choiceWord(r.key,r.to)}. Your game is using it now`:`Saved. It runs after you tap “Update my game”`);
+    else if(!r.same){renderCode();toast("That value doesn't work here");}
+  }
 });
 document.addEventListener("pointerdown",e=>{
   if(e.button!==0||flow.isOnboardingOpen())return;

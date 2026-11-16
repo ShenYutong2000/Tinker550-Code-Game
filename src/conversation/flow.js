@@ -7,6 +7,7 @@ import { projectCharacters, isBuilt, buildProjectSpec, projectContext, updateAut
 import { saveBotName } from "../state/storage.js";
 import { createVersionJournal, savePlaytestAssessment } from "../state/journal.js";
 import { connectNotes, ensureStickerNode, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
+import { setCodeValue } from "../state/code-edit.js";
 import { esc, GUIDE } from "../ui/templates.js";
 import { writeProgram, runProgram } from "../game/program.js";
 
@@ -196,6 +197,14 @@ function saveEdit(id){
     autoName();
   }
   render();autosave();
+}
+/* a value changed in a code block goes straight into the note, and into the game if the note is already in it */
+function codeEdit(id,key,value){
+  const r=setCodeValue(P,id,key,value);
+  if(!r.ok)return r;
+  if(r.live){game.load(r.spec);UI.pendingSpec=null;}
+  render();autosave();
+  return r;
 }
 function delSticker(id){
   const i=P.stickers.findIndex(x=>x.id===id);if(i<0)return;
@@ -487,7 +496,7 @@ function resetProject(project){
 }
 return {
   say, renderLive, runOnboarding, startTour, doOpening, describe, send, autosize,
-  saveEdit, delSticker, pickOption, submitGuess,
+  saveEdit, delSticker, codeEdit, pickOption, submitGuess,
   generate, finishGen, pickGo, conceptDesign, conceptOther, openPane,
   clearAsk, directions, editableText, setComposer, greet, renameBot,
   addNote, cancelChoice, resetProject,

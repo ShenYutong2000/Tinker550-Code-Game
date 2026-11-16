@@ -34,7 +34,7 @@ export function restoreProject(saved, botName){
 }
 
 export function createUIState(viewportWidth){
-  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,paneTab:"play",adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
+  return {expanded:new Set(),editing:null,focus:null,connectFrom:null,paneTab:"play",codeMode:"blocks",adding:null,mapZoom:.8,fitMap:true,feel:null,idea:null,ideaText:"",onboardQ:[],gen:null,choice:null,tab:"create",journalOpen:true,previewOpen:true,paneOpen:false,reveal:false};
 }
 
 export const projectCharacters=project=>project.stickers.filter(sticker=>sticker.col==="character");
