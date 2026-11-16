@@ -16,6 +16,8 @@ export function ensureStickerNode(project, sticker, previousStickerId) {
     item.stickerId === sticker.id || (previousStickerId && item.stickerId === previousStickerId)
   );
   if (node) {
+    /* a rewritten note keeps its place in every loop */
+    if (previousStickerId) for (const loop of project.designMap.loops || []) loop.notes = loop.notes.map(id => id === previousStickerId ? sticker.id : id);
     node.stickerId = sticker.id;
     node.title = sticker.text;
     node.status = mapStatus(project, sticker);
@@ -46,6 +48,7 @@ export function syncStickerNodes(project) {
     .map(node => node.id));
   project.designMap.nodes = project.designMap.nodes.filter(node => !removed.has(node.id));
   project.designMap.edges = project.designMap.edges.filter(edge => !removed.has(edge.from) && !removed.has(edge.to));
+  for (const loop of project.designMap.loops || []) loop.notes = loop.notes.filter(id => validIds.has(id));
 }
 
 export function setStickerNodeStatus(project, stickerId, status) {
@@ -57,14 +60,28 @@ export function removeStickerNode(project, stickerId) {
   const removed = new Set(project.designMap.nodes.filter(node => node.stickerId === stickerId).map(node => node.id));
   project.designMap.nodes = project.designMap.nodes.filter(node => !removed.has(node.id));
   project.designMap.edges = project.designMap.edges.filter(edge => !removed.has(edge.from) && !removed.has(edge.to));
+  for (const loop of project.designMap.loops || []) loop.notes = loop.notes.filter(id => id !== stickerId);
 }
 
 function stickerNodeId(project, stickerId) {
   return project.designMap.nodes.find(node => node.stickerId === stickerId)?.id;
 }
 
-/* how one note relates to another; older links without a label read as "if → then" */
-export const LINK_LABELS = { then: "if → then", uses: "uses", controls: "controls", ends: "ends when" };
+/* the logic sticker library: a fixed set of kinds, each usable as often as a child likes.
+   A link between two notes is one of these stickers; older links without a label read as "if → then".
+   "runs" kinds become rules in the game's code; the others stay in the design as ideas. */
+export const LOGIC_STICKERS = [
+  { k: "then", label: "if → then", ic: "➡️", runs: true, tip: "When the first thing happens, the second thing happens" },
+  { k: "ends", label: "ends when", ic: "🏁", runs: true, tip: "The first thing can end the game" },
+  { k: "every", label: "every 5 s", ic: "⏰", runs: true, tip: "The second thing happens again every 5 seconds" },
+  { k: "and", label: "and", ic: "➕", runs: false, tip: "Both things work together" },
+  { k: "or", label: "or", ic: "🔀", runs: false, tip: "Either one can happen" },
+  { k: "unless", label: "unless", ic: "🚫", runs: false, tip: "The second thing stops the first one" },
+  { k: "more", label: "more → more", ic: "📈", runs: false, tip: "The more of the first, the more of the second" },
+  { k: "uses", label: "uses", ic: "🎒", runs: false, tip: "The first thing needs the second" },
+  { k: "controls", label: "controls", ic: "🕹️", runs: false, tip: "The first thing moves the second" }
+];
+export const LINK_LABELS = Object.fromEntries(LOGIC_STICKERS.map(sticker => [sticker.k, sticker.label]));
 export function inferLabel(fromCol, toCol) {
   if (toCol === "outcome") return "ends";
   if (fromCol === "procedures" && toCol === "character") return "controls";

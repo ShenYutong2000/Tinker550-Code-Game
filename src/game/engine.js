@@ -114,6 +114,8 @@ function Game(canvas){
       return;
     }
     st.alive+=dt;
+    // "every 5 s" stickers from the design map
+    st.tick=(st.tick||0)+dt;if(st.tick>=5){st.tick-=5;const h=st.heroes[0];fire("tick",h,h.x,h.y);}
     const m=sp.mode,sm=(sp.speedUp?1+st.t/30:1)*st.boost,spd=200*(sp.speed||1);
     for(const h of st.heroes){
       const c=ctrl(h.i);

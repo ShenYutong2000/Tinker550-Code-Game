@@ -8,6 +8,7 @@ import { saveBotName } from "../state/storage.js";
 import { createVersionJournal, savePlaytestAssessment } from "../state/journal.js";
 import { connectNotes, ensureStickerNode, removeStickerNode, setStickerNodeStatus } from "../state/design-map.js";
 import { setCodeValue } from "../state/code-edit.js";
+import { setLoops } from "../state/loops.js";
 import { esc, GUIDE } from "../ui/templates.js";
 import { writeProgram, runProgram } from "../game/program.js";
 
@@ -125,9 +126,10 @@ function startDraft(who,act,feel,idea,told){
   P.activeChar=made[0].id;
   let linked=0;
   for(const [from,to,label] of draft.links)if(connectNotes(P,made[from].id,made[to].id,label).result==="linked")linked++;
+  setLoops(P,draft.loops.map(loop=>({name:loop.name,notes:loop.notes.map(i=>made[i].id)})));
   autoName();
   const yours=made.filter(n=>n.by==="kid").length;
-  say(`✨ Here's a first draft of <b>${esc(P.name||"your game")}</b>! I put <b>${made.length} notes</b> on all nine elements and drew <b>${linked} arrows</b> to show what causes what.`);
+  say(`✨ Here's a first draft of <b>${esc(P.name||"your game")}</b>! I put <b>${made.length} notes</b> on all nine elements, drew <b>${linked} arrows</b> to show what causes what, and grouped them into <b>${P.designMap.loops.length} action loops</b> (see 🔁 Loops).`);
   if(draft.unsorted.length)say(`I wasn't sure where ${draft.unsorted.length>1?"these go":"this goes"}, so I left ${draft.unsorted.length>1?"them":"it"} out for now: ${draft.unsorted.map(u=>"“"+esc(u)+"”").join(", ")}. You can add ${draft.unsorted.length>1?"them":"it"} on the map.`);
   say(`It's only a draft. <b>You're the designer!</b> ${yours} ${yours>1?"notes are":"note is"} your own words; the ones marked ✨ are my guesses. Play it, then change anything on the map.`);
   buildVersion({news:[...P.stickers],guess:null,round:1,P:{}});

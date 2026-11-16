@@ -39,7 +39,10 @@ test('existing v6 JSON stays unchanged in storage and restores with a migrated d
   assert.deepEqual(legacyFields,legacyRest);
   /* the confirm step is gone: a note still waiting to be confirmed loads as a regular note */
   assert.deepEqual(stickers,legacyStickers.map(sticker=>({...sticker,status:'ok'})));
-  assert.deepEqual(designMap,{
+  /* older saves get the suggested action loops from the notes they already have */
+  const {loops,...map}=designMap;
+  assert.deepEqual(loops.map(loop=>({name:loop.name,notes:loop.notes})),[{name:'Core loop: play and score',notes:['s1','s2','s3']}]);
+  assert.deepEqual(map,{
     nodes:[
       {id:'card-s1',stickerId:'s1',title:'🐱 cat',status:'built'},
       {id:'card-s2',stickerId:'s2',title:'“catching stars”',status:'built'},

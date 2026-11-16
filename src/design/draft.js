@@ -2,6 +2,7 @@ import { MODES } from "./catalog.js";
 import { parseHero, parseAction, sing } from "./parse.js";
 import { optionsFor } from "./options.js";
 import { readMechanism } from "./analyze.js";
+import { suggestLoops } from "../state/loops.js";
 
 /* Builds the first draft of a design map from the three onboarding answers and an optional description.
    Every element gets at least one note; the child's own words win over any default for the same element.
@@ -84,5 +85,5 @@ export function buildDraft({who,act,feel,idea}){
   link("lives","end","ends");
   link("timer","end","ends");
   if(notes.some(n=>n.effect&&(n.effect.winAt||n.effect.target)))link("score","end","ends");
-  return {notes:notes.map(({key,...note})=>note),links,unsorted:idea&&idea.unsorted||[]};
+  return {notes:notes.map(({key,...note})=>note),links,loops:suggestLoops(notes),unsorted:idea&&idea.unsorted||[]};
 }
